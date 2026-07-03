@@ -1,26 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Cloud9 brand — a sky-world palette */
+  --sky-deep: #0369a1; /* primary: deep sky blue */
+  --teal: #059669; /* accent: teal-green (used sparingly) */
+  --teal-ink: #047857; /* AA-safe teal for white text (user bubbles) */
+  --cloud: #f0f9ff; /* soft cloud white: surfaces */
+  --slate: #64748b; /* warm gray: meta + hairlines only */
+  --ink: #0f172a; /* body + headings (contrast) */
+
+  --background: var(--cloud);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-sky-deep: var(--sky-deep);
+  --color-teal: var(--teal);
+  --color-teal-ink: var(--teal-ink);
+  --color-cloud: var(--cloud);
+  --color-slate-warm: var(--slate);
+  --color-ink: var(--ink);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-jakarta);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+}
+
+/* Ambient sky clouds drift gently — only when motion is welcome. */
+@keyframes cloud-drift {
+  from {
+    transform: translate3d(-2%, 0, 0);
+  }
+  to {
+    transform: translate3d(2%, 0, 0);
+  }
+}
+
+/* Cloud cards bob up and down, each at its own speed. */
+@keyframes card-float {
+  from {
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    transform: translate3d(0, -12px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cloud-drift {
+    animation: cloud-drift 26s ease-in-out infinite alternate;
+  }
+  .cloud-drift-slow {
+    animation: cloud-drift 40s ease-in-out infinite alternate;
+  }
+  .card-float-1 {
+    animation: card-float 5s ease-in-out infinite alternate;
+  }
+  .card-float-2 {
+    animation: card-float 6.6s ease-in-out -1.5s infinite alternate;
+  }
+  .card-float-3 {
+    animation: card-float 5.7s ease-in-out -3.2s infinite alternate;
+  }
 }
