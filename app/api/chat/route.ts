@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
 import { detectPreferences, mergePreferences } from "@/lib/preferences";
 
+// Give the streamed Concierge reply headroom past Vercel's 10s default so long
+// responses aren't cut off mid-stream in production.
+export const maxDuration = 60;
+
 type ChatRow = { role: "user" | "assistant"; content: string };
 
 /** Ask a cheap model for the destination named in a message (or NONE). */
@@ -44,7 +48,19 @@ export async function POST(request: Request) {
   }
   const rawTripId = typeof body.tripId === "string" ? body.tripId : null;
 
-  const admin = getSupabaseAdmin();
+  // Constructing the Supabase client throws if its env vars are missing (a
+  // common production misconfig). Handle it here so the client gets a clear
+  // 500 instead of an opaque crash.
+  let admin: ReturnType<typeof getSupabaseAdmin>;
+  try {
+    admin = getSupabaseAdmin();
+  } catch (err) {
+    console.error("Supabase client init failed:", err);
+    return Response.json(
+      { error: "Server misconfigured: Supabase environment variables are missing." },
+      { status: 500 },
+    );
+  }
 
   // Ensure a user row exists and grab id + current preferences in one call.
   const { data: user, error: userError } = await admin

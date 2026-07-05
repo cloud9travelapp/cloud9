@@ -123,6 +123,18 @@ export default function ChatClient({
       });
 
       if (!res.ok || !res.body) {
+        // Surface the server's actual reason (e.g. "Not authenticated",
+        // "Server misconfigured...") so production failures are debuggable.
+        let serverReason = "";
+        try {
+          serverReason = (await res.text()).slice(0, 500);
+        } catch {
+          /* body may be empty or already consumed */
+        }
+        console.error(
+          `Chat request failed: HTTP ${res.status} ${res.statusText}`,
+          serverReason,
+        );
         throw new Error(`Request failed (${res.status})`);
       }
 
