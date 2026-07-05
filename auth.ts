@@ -2,17 +2,6 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-// Startup diagnostic: log which AUTH_* variables are present at runtime — never
-// their values. Runs on cold start and shows up in the Vercel function logs, so
-// a missing secret/provider var is obvious instead of a generic Configuration error.
-const authVarPresence = (value?: string) =>
-  value && value.trim().length > 0 ? "present" : "MISSING";
-console.log(
-  `[cloud9][auth-env] AUTH_SECRET=${authVarPresence(process.env.AUTH_SECRET)} ` +
-    `AUTH_GOOGLE_ID=${authVarPresence(process.env.AUTH_GOOGLE_ID)} ` +
-    `AUTH_GOOGLE_SECRET=${authVarPresence(process.env.AUTH_GOOGLE_SECRET)}`,
-);
-
 /**
  * Auth.js (NextAuth v5) configuration.
  *
