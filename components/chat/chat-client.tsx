@@ -78,6 +78,37 @@ function formatTime(iso?: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+const OPTIONS_START = "<<OPTIONS>>";
+const OPTIONS_END = "<<END>>";
+
+/**
+ * Split an assistant message into its display text and any quick-reply options.
+ * Everything from the <<OPTIONS>> marker onward is stripped from the text (so raw
+ * markers/JSON never render, even mid-stream). Options are returned only when a
+ * complete, valid block parses; any failure degrades to plain text.
+ */
+function splitOptions(content: string): {
+  text: string;
+  options: string[] | null;
+} {
+  const start = content.indexOf(OPTIONS_START);
+  if (start === -1) return { text: content, options: null };
+  const text = content.slice(0, start).trimEnd();
+  const end = content.indexOf(OPTIONS_END, start);
+  if (end === -1) return { text, options: null };
+  const raw = content.slice(start + OPTIONS_START.length, end).trim();
+  try {
+    const parsed = JSON.parse(raw) as { options?: unknown };
+    if (!Array.isArray(parsed.options)) return { text, options: null };
+    const options = parsed.options
+      .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+      .slice(0, 4);
+    return { text, options: options.length ? options : null };
+  } catch {
+    return { text, options: null };
+  }
+}
+
 export default function ChatClient({
   initialMessages,
   firstName,
@@ -100,14 +131,14 @@ export default function ChatClient({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  async function send() {
-    const text = input.trim();
+  async function send(preset?: string) {
+    const text = (preset ?? input).trim();
     if (!text || isStreaming) return;
 
     const now = new Date().toISOString();
     const wasNewTrip = currentTripId === null;
     let resolvedTripId = currentTripId;
-    setInput("");
+    if (preset === undefined) setInput("");
     setIsStreaming(true);
     setMessages((prev) => [
       ...prev,
@@ -267,21 +298,29 @@ export default function ChatClient({
               </p>
             </div>
           ) : (
-            messages.map((m, i) =>
-              m.role === "user" ? (
-                <div key={i} className="flex flex-col items-end">
-                  <div className="w-fit max-w-[82%] rounded-2xl bg-teal-ink px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-sm">
-                    <span className="whitespace-pre-wrap">{m.content}</span>
+            messages.map((m, i) => {
+              if (m.role === "user") {
+                return (
+                  <div key={i} className="flex flex-col items-end">
+                    <div className="w-fit max-w-[82%] rounded-2xl bg-teal-ink px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-sm">
+                      <span className="whitespace-pre-wrap">{m.content}</span>
+                    </div>
+                    <span className="mt-1.5 px-1 text-[11px] text-slate-warm">
+                      {formatTime(m.created_at)}
+                    </span>
                   </div>
-                  <span className="mt-1.5 px-1 text-[11px] text-slate-warm">
-                    {formatTime(m.created_at)}
-                  </span>
-                </div>
-              ) : (
+                );
+              }
+
+              // Quick-reply options: strip the block from the text; show pills
+              // only under the latest assistant message once streaming is done.
+              const { text, options } = splitOptions(m.content);
+              const isLast = i === messages.length - 1;
+              return (
                 <div key={i} className="flex flex-col items-start pt-2">
                   <CloudBubble>
-                    {m.content ? (
-                      <span className="whitespace-pre-wrap">{m.content}</span>
+                    {text ? (
+                      <span className="whitespace-pre-wrap">{text}</span>
                     ) : (
                       <span className="inline-flex gap-1 py-1">
                         <span className="h-2 w-2 animate-bounce rounded-full bg-sky-deep/60 [animation-delay:-0.2s]" />
@@ -293,9 +332,24 @@ export default function ChatClient({
                   <span className="mt-1.5 px-1 text-[11px] text-slate-warm">
                     {formatTime(m.created_at)}
                   </span>
+                  {options && isLast && !isStreaming ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {options.map((opt, oi) => (
+                        <button
+                          key={oi}
+                          type="button"
+                          dir="auto"
+                          onClick={() => void send(opt)}
+                          className="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm text-orange-900 transition-colors hover:bg-orange-50"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              ),
-            )
+              );
+            })
           )}
         </div>
       </div>
