@@ -127,12 +127,14 @@ type FlightOfferView = {
   price: number;
   currency: string;
 };
-type FlightsPayload = { mock: boolean; offers: FlightOfferView[] };
+type Lang = "he" | "en";
+type FlightsPayload = { mock: boolean; lang: Lang; offers: FlightOfferView[] };
 
 /**
  * Mirror of splitOptions for the <<FLIGHTS>> block. Strips from the marker so raw
  * JSON never shows; parses only a complete, valid block; any failure degrades to
- * plain text. Accepts `{ mock, offers }` or a bare offers array (mock defaults on).
+ * plain text. Accepts `{ lang, mock, offers }` or a bare offers array. `lang`
+ * defaults to "en" unless it is exactly "he".
  */
 function splitFlights(content: string): {
   text: string;
@@ -147,13 +149,15 @@ function splitFlights(content: string): {
   try {
     const parsed = JSON.parse(raw) as unknown;
     let mock = true;
+    let lang: Lang = "en";
     let offersRaw: unknown;
     if (Array.isArray(parsed)) {
       offersRaw = parsed;
     } else if (parsed && typeof parsed === "object") {
-      const obj = parsed as { mock?: unknown; offers?: unknown };
+      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
       offersRaw = obj.offers;
       mock = obj.mock !== false; // label unless explicitly false
+      lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
     }
     if (!Array.isArray(offersRaw)) return { text, flights: null };
     const offers = offersRaw.filter((o): o is FlightOfferView => {
@@ -167,7 +171,7 @@ function splitFlights(content: string): {
       );
     });
     if (!offers.length) return { text, flights: null };
-    return { text, flights: { mock, offers: offers.slice(0, 8) } };
+    return { text, flights: { mock, lang, offers: offers.slice(0, 8) } };
   } catch {
     return { text, flights: null };
   }
@@ -177,54 +181,116 @@ function isoTime(iso: string): string {
   const m = iso.match(/T(\d{2}:\d{2})/); // wall-clock time straight from the ISO
   return m ? m[1] : iso;
 }
-function hebDuration(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h}ש` : `${h}ש ${m}ד`;
-}
-function hebStops(stops: number): string {
-  if (stops <= 0) return "ישיר";
-  if (stops === 1) return "עצירה אחת";
-  return `${stops} עצירות`;
+const LABELS: Record<
+  Lang,
+  {
+    duration: (min: number) => string;
+    stops: (n: number) => string;
+    mock: string;
+  }
+> = {
+  he: {
+    duration: (min) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m === 0 ? `${h}ש` : `${h}ש ${m}ד`;
+    },
+    stops: (n) => (n <= 0 ? "ישיר" : n === 1 ? "עצירה אחת" : `${n} עצירות`),
+    mock: "נתוני דמה",
+  },
+  en: {
+    duration: (min) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    },
+    stops: (n) => (n <= 0 ? "Direct" : n === 1 ? "1 stop" : `${n} stops`),
+    mock: "Test data",
+  },
+};
+
+function PlaneIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="mx-0.5 h-3.5 w-3.5 flex-none text-orange-400"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
+    </svg>
+  );
 }
 
 function FlightCard({
   offer,
   mock,
+  lang,
 }: {
   offer: FlightOfferView;
   mock: boolean;
+  lang: Lang;
 }) {
+  const L = LABELS[lang];
   const first = offer.segments[0];
   const last = offer.segments[offer.segments.length - 1];
+  const price =
+    offer.currency === "USD"
+      ? `$${offer.price}`
+      : `${offer.price} ${offer.currency}`;
+  const durationDir = lang === "he" ? "rtl" : "ltr";
+
   return (
-    <div className="rounded-xl border border-orange-200 bg-white p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div dir="auto" className="text-sm font-semibold text-ink">
-            {offer.airlineName}
-          </div>
-          <div dir="ltr" className="mt-0.5 text-sm text-slate-warm">
-            {first.origin} → {last.destination}
-          </div>
-          <div dir="ltr" className="mt-1 text-[15px] font-medium text-ink">
-            {isoTime(first.departTime)} – {isoTime(last.arriveTime)}
-          </div>
-          <div dir="rtl" className="mt-0.5 text-xs text-slate-warm">
-            {hebDuration(offer.totalDurationMinutes)} · {hebStops(offer.stops)}
-          </div>
+    <div className="rounded-xl border border-orange-200 bg-white px-3 py-2.5 shadow-sm">
+      {/* airline (left) + price (right) */}
+      <div dir="ltr" className="flex items-center justify-between gap-3">
+        <span dir="auto" className="truncate text-sm font-semibold text-ink">
+          {offer.airlineName}
+        </span>
+        <span className="flex-none text-lg font-bold text-orange-900">
+          {price}
+        </span>
+      </div>
+
+      {/* timeline — always LTR so departure stays on the left */}
+      <div dir="ltr" className="mt-2 flex items-center gap-2">
+        <div className="flex flex-col items-center">
+          <span className="text-[15px] font-medium text-ink">
+            {isoTime(first.departTime)}
+          </span>
+          <span className="text-xs text-slate-warm">{first.origin}</span>
         </div>
-        <div className="flex flex-none flex-col items-end">
-          <div dir="ltr" className="text-lg font-bold text-orange-900">
-            {offer.price} {offer.currency}
+
+        <div className="flex flex-1 flex-col items-center">
+          <span dir={durationDir} className="text-[11px] text-slate-warm">
+            {L.duration(offer.totalDurationMinutes)}
+          </span>
+          <div className="my-1 flex w-full items-center">
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-orange-300" />
+            <span className="flex-1 border-t border-dashed border-orange-300" />
+            <PlaneIcon />
+            <span className="flex-1 border-t border-dashed border-orange-300" />
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-orange-300" />
           </div>
-          {mock ? (
-            <div dir="rtl" className="mt-1 text-[10px] text-slate-warm/70">
-              נתוני דמה
-            </div>
-          ) : null}
+          <span dir={durationDir} className="text-[11px] text-slate-warm">
+            {L.stops(offer.stops)}
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center">
+          <span className="text-[15px] font-medium text-ink">
+            {isoTime(last.arriveTime)}
+          </span>
+          <span className="text-xs text-slate-warm">{last.destination}</span>
         </div>
       </div>
+
+      {/* mock-data tag (per language, only while mock) */}
+      {mock ? (
+        <div dir="auto" className="mt-1.5 text-[10px] text-slate-warm/70">
+          {L.mock}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -482,6 +548,7 @@ export default function ChatClient({
                           key={offer.id}
                           offer={offer}
                           mock={flights.mock}
+                          lang={flights.lang}
                         />
                       ))}
                     </div>
