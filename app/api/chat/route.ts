@@ -1,7 +1,10 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
 import { detectPreferences, mergePreferences } from "@/lib/preferences";
+import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
+import type { FlightQuery } from "@/lib/flights/types";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -26,6 +29,76 @@ async function extractDestination(message: string): Promise<string | null> {
   } catch (err) {
     console.error("Trip naming failed:", err);
     return null;
+  }
+}
+
+const FLIGHT_TOOL: Anthropic.Tool = {
+  name: "search_flights",
+  description:
+    "Search for flights. Only call this once you know the origin airport, destination airport, and departure date. `origin` and `destination` MUST be 3-letter IATA airport codes (e.g. TLV, JFK, LHR) — convert city names to codes yourself before calling.",
+  input_schema: {
+    type: "object",
+    properties: {
+      origin: { type: "string", description: "Origin airport IATA code, e.g. TLV" },
+      destination: {
+        type: "string",
+        description: "Destination airport IATA code, e.g. JFK",
+      },
+      departureDate: { type: "string", description: "Departure date, YYYY-MM-DD" },
+      returnDate: {
+        type: "string",
+        description: "Return date, YYYY-MM-DD (round trips only)",
+      },
+      passengers: { type: "integer", description: "Number of passengers (default 1)" },
+      cabinClass: {
+        type: "string",
+        enum: ["economy", "premium_economy", "business", "first"],
+        description: "Cabin class (default economy)",
+      },
+    },
+    required: ["origin", "destination", "departureDate"],
+  },
+};
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Flight search timed out")), ms),
+    ),
+  ]);
+}
+
+/**
+ * Run a search_flights tool call and return a string tool result. On success:
+ * JSON `{ mock, offers }`. On any failure/timeout: a short error sentence so
+ * the model apologizes and the chat keeps going — the flight layer never throws
+ * into the stream.
+ */
+async function runFlightSearch(input: unknown): Promise<string> {
+  try {
+    const q = (input ?? {}) as Partial<FlightQuery>;
+    const query: FlightQuery = {
+      origin: String(q.origin ?? "").toUpperCase().slice(0, 3),
+      destination: String(q.destination ?? "").toUpperCase().slice(0, 3),
+      departureDate: String(q.departureDate ?? ""),
+      returnDate: q.returnDate ? String(q.returnDate) : undefined,
+      passengers:
+        typeof q.passengers === "number" && q.passengers > 0 ? q.passengers : 1,
+      cabinClass: q.cabinClass ?? "economy",
+    };
+    if (
+      query.origin.length !== 3 ||
+      query.destination.length !== 3 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.departureDate)
+    ) {
+      return "Invalid search: need 3-letter IATA codes for origin and destination and a departure date as YYYY-MM-DD.";
+    }
+    const offers = await withTimeout(searchFlights(query), 15000);
+    return JSON.stringify({ mock: IS_MOCK_PROVIDER, offers });
+  } catch (err) {
+    console.error("Flight search failed:", err);
+    return "The flight search is unavailable right now. Apologize briefly in the user's language and offer to try again.";
   }
 }
 
@@ -156,7 +229,7 @@ How you talk:
 - Go light on punctuation. No strings of exclamation marks — just what you actually need.
 - Ask one or two questions at most, and only when they belong together, then stop and let them answer.
 
-One honest thing: you can't book flights or hotels yet — that part's still being wired up. If it comes up, just say so casually and steer back to the good stuff: where to go, the vibe, timing, food, things to do.
+One honest thing: you can search flights and show live options, but you can't book anything yet — actual booking (flights and hotels) is still being wired up. So find them flights happily; if they want to book, just mention that part's coming soon.
 
 Quick-reply options: when you ask a clarifying question that has a small set of likely answers (budget range, travel month, trip vibe, and the like), end your message — after all your normal text — with a single options block in EXACTLY this format, each part on its own line:
 
@@ -166,15 +239,27 @@ Quick-reply options: when you ask a clarifying question that has a small set of 
 
 Rules: at most one block per message; 2-4 short options; write the options in the same language the user is chatting in (this app serves Hebrew-speaking users, so they'll usually be in Hebrew); valid JSON only inside the block. If no clarifying question is needed, don't output the block at all.
 
+Flights: you can search real flight options with the search_flights tool.
+- Gather what you need naturally: where they're flying from, where to, and the departure date (return date, passenger count, and cabin class are optional). Use the quick-reply options block above for small choices — cabin class, one-way vs round trip, or "flexible on dates" — when it moves things along.
+- Convert cities to IATA airport codes yourself: תל אביב → TLV, ניו יורק → JFK, לונדון → LHR, פריז → CDG, רומא → FCO, and so on. Never ask the user for airport codes.
+- Only call search_flights once you have origin, destination, and departure date.
+- When the tool returns flight data, write one short sentence in the user's language (e.g. point to the cheapest or a good pick), then on their own new lines append EXACTLY this block with the tool's JSON copied verbatim — do not rewrite or reformat it:
+
+<<FLIGHTS>>
+{"mock":true,"offers":[ ... ]}
+<<END>>
+
+Don't list the flights in prose — the cards show the details. At most one FLIGHTS block per message, valid JSON only. If the tool returns an error sentence instead of data, don't output a block — just apologize briefly in the user's language and offer to try again.
+
 ${
     isFirstMessage
       ? "First time you two are talking: one short, warm hello as the Cloud9 Concierge, then ask where they're thinking of heading. Nothing more."
       : "You've talked before: greet them by name like a friend, use what you already know about their taste, and skip the introductions."
   }`;
 
-  const anthropicMessages = [
+  const anthropicMessages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: "user" as const, content: message },
+    { role: "user", content: message },
   ];
 
   const encoder = new TextEncoder();
@@ -183,24 +268,51 @@ ${
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const msgStream = getAnthropic().messages.stream({
-          model: CONCIERGE_MODEL,
-          max_tokens: 4096,
-          thinking: { type: "disabled" },
-          system,
-          messages: anthropicMessages,
-        });
+        // Tool round-trip loop. A normal reply (no tool call) streams exactly as
+        // before and breaks after the first turn; a flight request adds one hop:
+        // preamble streams -> tool runs -> final summary + <<FLIGHTS>> streams.
+        for (let hop = 0; ; hop++) {
+          const msgStream = getAnthropic().messages.stream({
+            model: CONCIERGE_MODEL,
+            max_tokens: 4096,
+            thinking: { type: "disabled" },
+            system,
+            tools: [FLIGHT_TOOL],
+            messages: anthropicMessages,
+          });
 
-        for await (const event of msgStream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            assistantText += event.delta.text;
-            controller.enqueue(encoder.encode(event.delta.text));
+          for await (const event of msgStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              assistantText += event.delta.text;
+              controller.enqueue(encoder.encode(event.delta.text));
+            }
           }
+          const finalMsg = await msgStream.finalMessage();
+
+          if (finalMsg.stop_reason !== "tool_use" || hop >= 3) break;
+
+          anthropicMessages.push({
+            role: "assistant",
+            content: finalMsg.content,
+          });
+          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+          for (const block of finalMsg.content) {
+            if (block.type !== "tool_use") continue;
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content:
+                block.name === "search_flights"
+                  ? await runFlightSearch(block.input)
+                  : "Unknown tool.",
+              is_error: block.name === "search_flights" ? undefined : true,
+            });
+          }
+          anthropicMessages.push({ role: "user", content: toolResults });
         }
-        await msgStream.finalMessage();
       } catch (err) {
         console.error("Chat stream error:", err);
         controller.enqueue(

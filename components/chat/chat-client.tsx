@@ -109,6 +109,126 @@ function splitOptions(content: string): {
   }
 }
 
+const FLIGHTS_START = "<<FLIGHTS>>";
+const FLIGHTS_END = "<<END>>";
+
+type FlightSegmentView = {
+  origin: string;
+  destination: string;
+  departTime: string;
+  arriveTime: string;
+};
+type FlightOfferView = {
+  id: string;
+  airlineName: string;
+  segments: FlightSegmentView[];
+  totalDurationMinutes: number;
+  stops: number;
+  price: number;
+  currency: string;
+};
+type FlightsPayload = { mock: boolean; offers: FlightOfferView[] };
+
+/**
+ * Mirror of splitOptions for the <<FLIGHTS>> block. Strips from the marker so raw
+ * JSON never shows; parses only a complete, valid block; any failure degrades to
+ * plain text. Accepts `{ mock, offers }` or a bare offers array (mock defaults on).
+ */
+function splitFlights(content: string): {
+  text: string;
+  flights: FlightsPayload | null;
+} {
+  const start = content.indexOf(FLIGHTS_START);
+  if (start === -1) return { text: content, flights: null };
+  const text = content.slice(0, start).trimEnd();
+  const end = content.indexOf(FLIGHTS_END, start);
+  if (end === -1) return { text, flights: null };
+  const raw = content.slice(start + FLIGHTS_START.length, end).trim();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    let mock = true;
+    let offersRaw: unknown;
+    if (Array.isArray(parsed)) {
+      offersRaw = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const obj = parsed as { mock?: unknown; offers?: unknown };
+      offersRaw = obj.offers;
+      mock = obj.mock !== false; // label unless explicitly false
+    }
+    if (!Array.isArray(offersRaw)) return { text, flights: null };
+    const offers = offersRaw.filter((o): o is FlightOfferView => {
+      const x = o as Partial<FlightOfferView>;
+      return (
+        !!x &&
+        typeof x.airlineName === "string" &&
+        Array.isArray(x.segments) &&
+        x.segments.length > 0 &&
+        typeof x.price === "number"
+      );
+    });
+    if (!offers.length) return { text, flights: null };
+    return { text, flights: { mock, offers: offers.slice(0, 8) } };
+  } catch {
+    return { text, flights: null };
+  }
+}
+
+function isoTime(iso: string): string {
+  const m = iso.match(/T(\d{2}:\d{2})/); // wall-clock time straight from the ISO
+  return m ? m[1] : iso;
+}
+function hebDuration(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}ש` : `${h}ש ${m}ד`;
+}
+function hebStops(stops: number): string {
+  if (stops <= 0) return "ישיר";
+  if (stops === 1) return "עצירה אחת";
+  return `${stops} עצירות`;
+}
+
+function FlightCard({
+  offer,
+  mock,
+}: {
+  offer: FlightOfferView;
+  mock: boolean;
+}) {
+  const first = offer.segments[0];
+  const last = offer.segments[offer.segments.length - 1];
+  return (
+    <div className="rounded-xl border border-orange-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div dir="auto" className="text-sm font-semibold text-ink">
+            {offer.airlineName}
+          </div>
+          <div dir="ltr" className="mt-0.5 text-sm text-slate-warm">
+            {first.origin} → {last.destination}
+          </div>
+          <div dir="ltr" className="mt-1 text-[15px] font-medium text-ink">
+            {isoTime(first.departTime)} – {isoTime(last.arriveTime)}
+          </div>
+          <div dir="rtl" className="mt-0.5 text-xs text-slate-warm">
+            {hebDuration(offer.totalDurationMinutes)} · {hebStops(offer.stops)}
+          </div>
+        </div>
+        <div className="flex flex-none flex-col items-end">
+          <div dir="ltr" className="text-lg font-bold text-orange-900">
+            {offer.price} {offer.currency}
+          </div>
+          {mock ? (
+            <div dir="rtl" className="mt-1 text-[10px] text-slate-warm/70">
+              נתוני דמה
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatClient({
   initialMessages,
   firstName,
@@ -312,9 +432,17 @@ export default function ChatClient({
                 );
               }
 
-              // Quick-reply options: strip the block from the text; show pills
-              // only under the latest assistant message once streaming is done.
-              const { text, options } = splitOptions(m.content);
+              // Strip any special block from the display text, then decide
+              // whether to show quick-reply pills or flight cards below.
+              const opt = splitOptions(m.content);
+              const options = opt.options;
+              let text = opt.text;
+              let flights: FlightsPayload | null = null;
+              if (!options) {
+                const fl = splitFlights(m.content);
+                text = fl.text;
+                flights = fl.flights;
+              }
               const isLast = i === messages.length - 1;
               return (
                 <div key={i} className="flex flex-col items-start pt-2">
@@ -344,6 +472,17 @@ export default function ChatClient({
                         >
                           {opt}
                         </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {flights ? (
+                    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
+                      {flights.offers.map((offer) => (
+                        <FlightCard
+                          key={offer.id}
+                          offer={offer}
+                          mock={flights.mock}
+                        />
                       ))}
                     </div>
                   ) : null}
