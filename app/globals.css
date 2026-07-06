@@ -9,6 +9,7 @@
 @property --c-bg-2 { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 @property --c-glow { syntax: "<color>"; inherits: true; initial-value: #d3e9ff; }
 @property --c-cloud { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --c-mist { syntax: "<color>"; inherits: true; initial-value: #0369a1; }
 @property --c-surface { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 @property --c-ink { syntax: "<color>"; inherits: true; initial-value: #0f172a; }
 @property --c-muted { syntax: "<color>"; inherits: true; initial-value: #566274; }
@@ -17,6 +18,10 @@
 @property --c-on-accent { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 @property --c-border { syntax: "<color>"; inherits: true; initial-value: #e5ecf4; }
 
+/* Day phases share a near-white base — the colored hero mist (--c-mist) carries
+   the phase identity. --c-mist is kept SEPARATE from --c-accent so the mist can
+   be a bright atmospheric colour while the accent stays readable on surfaces. */
+
 /* Midday is the default (also the SSR value before the phase script runs). */
 :root,
 :root[data-phase="midday"] {
@@ -24,6 +29,8 @@
   --c-bg-2: #ffffff;
   --c-glow: #d3e9ff;
   --c-cloud: #ffffff;
+  --c-mist: #0f74b8;
+  --c-mist-opacity: 0.4;
   --c-surface: #ffffff;
   --c-ink: #0f172a;
   --c-muted: #566274;
@@ -33,12 +40,15 @@
   --c-border: #e5ecf4;
 }
 
-/* Sunrise (05–08) — soft pink-gold dawn, distinct from morning's blue. */
+/* Sunrise (05–08) — near-white warm base; mist is clear YELLOW-GOLD dawn light
+   (deliberately distinct from sunset's coral). */
 :root[data-phase="sunrise"] {
-  --c-bg-1: #ffd0c9;
-  --c-bg-2: #ffead5;
-  --c-glow: #ffcaa0;
-  --c-cloud: #ffe7df;
+  --c-bg-1: #fdeee7;
+  --c-bg-2: #fffaf5;
+  --c-glow: #ffe6d3;
+  --c-cloud: #fff2ea;
+  --c-mist: #f6bf3a;
+  --c-mist-opacity: 0.42;
   --c-surface: #fff7f2;
   --c-ink: #42291f;
   --c-muted: #7d5d50;
@@ -48,12 +58,14 @@
   --c-border: #f4d6c8;
 }
 
-/* Morning (08–11) — bright, airy, soft sky blues + white. */
+/* Morning (08–11) — near-white cool base; soft sky-blue mist. */
 :root[data-phase="morning"] {
-  --c-bg-1: #d3e9ff;
-  --c-bg-2: #f3f9ff;
-  --c-glow: #bcdcff;
+  --c-bg-1: #eaf3fd;
+  --c-bg-2: #ffffff;
+  --c-glow: #dcecfe;
   --c-cloud: #ffffff;
+  --c-mist: #4f9fe6;
+  --c-mist-opacity: 0.4;
   --c-surface: #ffffff;
   --c-ink: #17293f;
   --c-muted: #52657f;
@@ -63,12 +75,14 @@
   --c-border: #d4e6fb;
 }
 
-/* Sunset (16–19) — coral, amber, sand; warm golden-hour tones. */
+/* Sunset (16–19) — near-white warm base; mist is DEEP CORAL-ORANGE golden hour. */
 :root[data-phase="sunset"] {
-  --c-bg-1: #ffbf9c;
-  --c-bg-2: #ffe6c6;
-  --c-glow: #ff9d63;
-  --c-cloud: #ffd7bb;
+  --c-bg-1: #fbe9dd;
+  --c-bg-2: #fff6ef;
+  --c-glow: #ffdcc6;
+  --c-cloud: #ffe9dc;
+  --c-mist: #e85c26;
+  --c-mist-opacity: 0.4;
   --c-surface: #fff6ee;
   --c-ink: #3d2416;
   --c-muted: #866052;
@@ -78,12 +92,15 @@
   --c-border: #f1d1b6;
 }
 
-/* Night (19–05) — deep calm blues, dark surfaces, soft warm accents. */
+/* Night (19–05) — deep calm blues, dark surfaces; mist is a soft warm amber
+   moonlight glow at low opacity (not a stain over the navy). */
 :root[data-phase="night"] {
   --c-bg-1: #061325;
   --c-bg-2: #0d2138;
   --c-glow: #16375f;
   --c-cloud: #14304f;
+  --c-mist: #f6c98a;
+  --c-mist-opacity: 0.22;
   --c-surface: #16273f;
   --c-ink: #eaf0fa;
   --c-muted: #9fb0c9;
@@ -100,6 +117,7 @@ html {
     --c-bg-2 900ms ease,
     --c-glow 900ms ease,
     --c-cloud 900ms ease,
+    --c-mist 900ms ease,
     --c-surface 900ms ease,
     --c-ink 900ms ease,
     --c-muted 900ms ease,

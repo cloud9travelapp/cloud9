@@ -8,36 +8,41 @@ const Dithering = lazy(() =>
   import("@paper-design/shaders-react").then((m) => ({ default: m.Dithering })),
 );
 
-/** Read the resolved --c-accent as a concrete color the shader can consume. */
-function readAccent(): string {
-  const v = getComputedStyle(document.documentElement)
-    .getPropertyValue("--c-accent")
-    .trim();
-  return v || "#0369a1";
+/** Read the phase mist colour + opacity (its own tokens, separate from the UI
+ *  accent) so the mist can be a bright atmospheric hue while accents stay
+ *  readable. */
+function readMist(): { color: string; opacity: number } {
+  const cs = getComputedStyle(document.documentElement);
+  const color = cs.getPropertyValue("--c-mist").trim() || "#0f74b8";
+  const opacity = parseFloat(cs.getPropertyValue("--c-mist-opacity")) || 0.4;
+  return { color, opacity };
 }
 
 /**
  * A soft, drifting Dithering texture behind the hero — reads like living
- * clouds/mist. Its front colour tracks the current phase accent (--c-accent),
- * re-read whenever <html data-phase> changes, so it lives with the clock.
- * Omitted entirely under prefers-reduced-motion.
+ * clouds/mist. Colour + opacity track the current phase mist tokens
+ * (--c-mist / --c-mist-opacity), re-read whenever <html data-phase> changes,
+ * so it lives with the clock. Omitted entirely under prefers-reduced-motion.
  */
 export default function HeroDithering() {
-  const [accent, setAccent] = useState("#0369a1");
+  const [mist, setMist] = useState<{ color: string; opacity: number }>({
+    color: "#0f74b8",
+    opacity: 0.4,
+  });
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    setAccent(readAccent());
+    setMist(readMist());
     setEnabled(true);
 
     // Follow the clock. A short settle delay lets the ~900ms token transition
-    // land near its target before we sample the accent.
+    // land near its target before we sample the mist colour.
     let t: number | undefined;
     const obs = new MutationObserver(() => {
       window.clearTimeout(t);
-      t = window.setTimeout(() => setAccent(readAccent()), 950);
+      t = window.setTimeout(() => setMist(readMist()), 950);
     });
     obs.observe(document.documentElement, {
       attributes: true,
@@ -54,14 +59,15 @@ export default function HeroDithering() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-35"
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      style={{ opacity: mist.opacity, transition: "opacity 900ms ease" }}
     >
       <Suspense fallback={null}>
         <Dithering
           colorBack="#00000000"
-          colorFront={accent}
+          colorFront={mist.color}
           shape="warp"
-          type="4x4"
+          type="8x8"
           speed={0.18}
           className="h-full w-full"
           minPixelRatio={1}
