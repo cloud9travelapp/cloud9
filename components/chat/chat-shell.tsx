@@ -36,7 +36,7 @@ export default function ChatShell({
       <div
         aria-hidden="true"
         onClick={() => setDrawerOpen(false)}
-        className={`fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm transition-opacity md:hidden ${
+        className={`fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm md:hidden ${
           drawerOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
