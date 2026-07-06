@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suez_One, Heebo } from "next/font/google";
 import "./globals.css";
 import TimeOfDay from "@/components/theme/time-of-day";
+import SkyClouds from "@/components/theme/sky-background";
 
 // Suez One — display only (big moments). Heebo — body & UI. Both cover
 // Hebrew + Latin so the bilingual type looks intentional in either language.
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 
 // Set the sky phase from the user's local time BEFORE first paint, so the
 // palette is correct on load with no flash and no layout shift.
-const PHASE_SCRIPT = `(function(){try{var h=new Date().getHours();var p=h>=5&&h<11?'morning':h<16?'midday':h<19?'sunset':'night';document.documentElement.dataset.phase=p;}catch(e){}})();`;
+const PHASE_SCRIPT = `(function(){try{var h=new Date().getHours();var p=h>=5&&h<8?'sunrise':h<11?'morning':h<16?'midday':h<19?'sunset':'night';document.documentElement.dataset.phase=p;}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -43,6 +44,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: PHASE_SCRIPT }} />
         <TimeOfDay />
+        <SkyClouds />
         {children}
       </body>
     </html>

@@ -4,7 +4,8 @@ import { useEffect } from "react";
 
 /** Map a 0–23 hour to the sky phase. */
 export function phaseForHour(hour: number): string {
-  if (hour >= 5 && hour < 11) return "morning";
+  if (hour >= 5 && hour < 8) return "sunrise";
+  if (hour < 11) return "morning";
   if (hour < 16) return "midday";
   if (hour < 19) return "sunset";
   return "night";

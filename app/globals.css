@@ -2,63 +2,95 @@
 
 /* ── Time-of-day role tokens ─────────────────────────────────────────────
    Registered as <color> so gradients/text can transition smoothly when the
-   phase changes (falls back to an instant swap on older browsers). */
-@property --c-bg-1 { syntax: "<color>"; inherits: true; initial-value: #fbfcff; }
+   phase changes (falls back to an instant swap on older browsers).
+   The boldness lives in the *background* tokens (bg / glow / cloud); the
+   surface/ink/accent tokens stay calm so content is always highly readable. */
+@property --c-bg-1 { syntax: "<color>"; inherits: true; initial-value: #eaf2fb; }
 @property --c-bg-2 { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --c-glow { syntax: "<color>"; inherits: true; initial-value: #d3e9ff; }
+@property --c-cloud { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 @property --c-surface { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 @property --c-ink { syntax: "<color>"; inherits: true; initial-value: #0f172a; }
-@property --c-muted { syntax: "<color>"; inherits: true; initial-value: #64748b; }
+@property --c-muted { syntax: "<color>"; inherits: true; initial-value: #566274; }
 @property --c-accent { syntax: "<color>"; inherits: true; initial-value: #0369a1; }
 @property --c-accent-soft { syntax: "<color>"; inherits: true; initial-value: #e0f2fe; }
-@property --c-border { syntax: "<color>"; inherits: true; initial-value: #e7edf5; }
+@property --c-on-accent { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --c-border { syntax: "<color>"; inherits: true; initial-value: #e5ecf4; }
 
 /* Midday is the default (also the SSR value before the phase script runs). */
 :root,
 :root[data-phase="midday"] {
-  --c-bg-1: #fbfcff;
+  --c-bg-1: #eaf2fb;
   --c-bg-2: #ffffff;
+  --c-glow: #d3e9ff;
+  --c-cloud: #ffffff;
   --c-surface: #ffffff;
   --c-ink: #0f172a;
-  --c-muted: #5b6b82;
+  --c-muted: #566274;
   --c-accent: #0369a1;
   --c-accent-soft: #e0f2fe;
-  --c-border: #e7edf5;
+  --c-on-accent: #ffffff;
+  --c-border: #e5ecf4;
 }
 
-/* Morning — bright, airy, soft sky blues + white. */
+/* Sunrise (05–08) — soft pink-gold dawn, distinct from morning's blue. */
+:root[data-phase="sunrise"] {
+  --c-bg-1: #ffd0c9;
+  --c-bg-2: #ffead5;
+  --c-glow: #ffcaa0;
+  --c-cloud: #ffe7df;
+  --c-surface: #fff7f2;
+  --c-ink: #42291f;
+  --c-muted: #7d5d50;
+  --c-accent: #bd502c;
+  --c-accent-soft: #ffe0d3;
+  --c-on-accent: #ffffff;
+  --c-border: #f4d6c8;
+}
+
+/* Morning (08–11) — bright, airy, soft sky blues + white. */
 :root[data-phase="morning"] {
-  --c-bg-1: #e8f3ff;
-  --c-bg-2: #ffffff;
+  --c-bg-1: #d3e9ff;
+  --c-bg-2: #f3f9ff;
+  --c-glow: #bcdcff;
+  --c-cloud: #ffffff;
   --c-surface: #ffffff;
-  --c-ink: #1e293b;
-  --c-muted: #5b6b82;
+  --c-ink: #17293f;
+  --c-muted: #52657f;
   --c-accent: #2f74d0;
   --c-accent-soft: #dbeafe;
-  --c-border: #dbeafe;
+  --c-on-accent: #ffffff;
+  --c-border: #d4e6fb;
 }
 
-/* Sunset — coral, amber, sand; warm golden-hour tones. */
+/* Sunset (16–19) — coral, amber, sand; warm golden-hour tones. */
 :root[data-phase="sunset"] {
-  --c-bg-1: #ffe1cb;
-  --c-bg-2: #fff3e6;
-  --c-surface: #fff8f2;
-  --c-ink: #45291c;
-  --c-muted: #8a6a58;
-  --c-accent: #d85f2c;
-  --c-accent-soft: #ffe0cc;
-  --c-border: #f4d9c4;
+  --c-bg-1: #ffbf9c;
+  --c-bg-2: #ffe6c6;
+  --c-glow: #ff9d63;
+  --c-cloud: #ffd7bb;
+  --c-surface: #fff6ee;
+  --c-ink: #3d2416;
+  --c-muted: #866052;
+  --c-accent: #c44d1d;
+  --c-accent-soft: #ffdcc4;
+  --c-on-accent: #ffffff;
+  --c-border: #f1d1b6;
 }
 
-/* Night — deep calm blues, dark surfaces, soft warm accents. */
+/* Night (19–05) — deep calm blues, dark surfaces, soft warm accents. */
 :root[data-phase="night"] {
-  --c-bg-1: #0a1a30;
-  --c-bg-2: #10233d;
+  --c-bg-1: #061325;
+  --c-bg-2: #0d2138;
+  --c-glow: #16375f;
+  --c-cloud: #14304f;
   --c-surface: #16273f;
   --c-ink: #eaf0fa;
   --c-muted: #9fb0c9;
   --c-accent: #f6b17a;
-  --c-accent-soft: #23364e;
-  --c-border: #274059;
+  --c-accent-soft: #21344c;
+  --c-on-accent: #10233d;
+  --c-border: #2a445f;
 }
 
 /* Smooth, unnoticeable transition when the phase changes. */
@@ -66,11 +98,14 @@ html {
   transition:
     --c-bg-1 900ms ease,
     --c-bg-2 900ms ease,
+    --c-glow 900ms ease,
+    --c-cloud 900ms ease,
     --c-surface 900ms ease,
     --c-ink 900ms ease,
     --c-muted 900ms ease,
     --c-accent 900ms ease,
     --c-accent-soft 900ms ease,
+    --c-on-accent 900ms ease,
     --c-border 900ms ease;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -79,7 +114,7 @@ html {
   }
 }
 
-/* ── Legacy named tokens (kept until Stage 2 migrates components to roles) ── */
+/* ── Legacy named tokens (kept until the landing page migrates in Stage 3) ── */
 :root {
   --sky-deep: #0369a1;
   --teal: #059669;
@@ -101,7 +136,7 @@ html {
   --color-slate-warm: var(--slate);
   --color-ink: var(--ink);
 
-  /* New time-of-day role tokens exposed as Tailwind colors for Stage 2. */
+  /* Time-of-day role tokens exposed as Tailwind colors. */
   --color-c-bg-1: var(--c-bg-1);
   --color-c-bg-2: var(--c-bg-2);
   --color-c-surface: var(--c-surface);
@@ -109,6 +144,7 @@ html {
   --color-c-muted: var(--c-muted);
   --color-c-accent: var(--c-accent);
   --color-c-accent-soft: var(--c-accent-soft);
+  --color-c-on-accent: var(--c-on-accent);
   --color-c-border: var(--c-border);
 
   --font-sans: var(--font-heebo);
@@ -116,7 +152,11 @@ html {
 }
 
 body {
-  background: linear-gradient(to bottom, var(--c-bg-1) 0%, var(--c-bg-2) 100%);
+  /* A richer sky: a horizon glow layered over a deeper phase gradient. All the
+     drama is here in the background — content surfaces on top stay calm. */
+  background:
+    radial-gradient(125% 80% at 50% -12%, var(--c-glow) 0%, transparent 58%),
+    linear-gradient(to bottom, var(--c-bg-1) 0%, var(--c-bg-2) 62%, var(--c-bg-2) 100%);
   background-attachment: fixed;
   color: var(--c-ink);
   font-family: var(--font-heebo), system-ui, -apple-system, sans-serif;
@@ -127,6 +167,20 @@ body {
   body {
     transition: none;
   }
+}
+
+/* ── Ambient sky clouds ──────────────────────────────────────────────────
+   Soft, blurred forms drifting behind all content. Tinted by the phase
+   (bright white by day, deep blue by night) so they read as atmosphere,
+   never as UI. Pointer-inert and low-contrast so text always wins. */
+.sky-cloud {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--c-cloud);
+  opacity: 0.5;
+  filter: blur(64px);
+  transition: background 900ms ease;
+  will-change: transform;
 }
 
 /* Ambient sky clouds drift gently — only when motion is welcome. */
