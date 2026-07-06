@@ -57,9 +57,9 @@ function Wordmark() {
   return (
     <Link
       href="/"
-      className="group flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sky-deep/40"
+      className="group flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40"
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-deep text-white">
+      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-c-accent text-c-on-accent">
         <svg
           viewBox="0 0 24 24"
           className="h-[18px] w-[18px]"
@@ -73,7 +73,7 @@ function Wordmark() {
           <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
         </svg>
       </span>
-      <span className="font-display text-lg font-extrabold tracking-tight text-ink">
+      <span className="font-display text-lg font-extrabold tracking-tight text-c-ink">
         Cloud9
       </span>
     </Link>
@@ -83,7 +83,8 @@ function Wordmark() {
 /**
  * A hand-drawn-style thought-bubble cloud: overlapping lobes form the bumpy
  * body, and three shrinking circles trail off the bottom-left as the tail.
- * Stretches to fill its card (preserveAspectRatio="none").
+ * Fill follows the phase surface token so cards theme with the sky (dark at
+ * night instead of glaring white). Stretches to fill its card.
  */
 function CloudShape({ className }: { className?: string }) {
   return (
@@ -93,7 +94,7 @@ function CloudShape({ className }: { className?: string }) {
       className={className}
       aria-hidden="true"
     >
-      <g fill="#ffffff">
+      <g style={{ fill: "var(--c-surface)", transition: "fill 900ms ease" }}>
         {/* body */}
         <ellipse cx="200" cy="150" rx="150" ry="80" />
         <ellipse cx="118" cy="108" rx="62" ry="55" />
@@ -129,13 +130,13 @@ export default async function Home() {
   return (
     <div className="flex-1">
       {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-slate-warm/10 bg-cloud/85 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-c-border bg-c-surface/70 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Wordmark />
           <nav className="flex items-center gap-5">
             <a
               href="#handles"
-              className="hidden text-sm font-medium text-slate-warm transition-colors hover:text-ink sm:block"
+              className="hidden text-sm font-medium text-c-muted transition-colors hover:text-c-ink sm:block"
             >
               How it works
             </a>
@@ -149,12 +150,12 @@ export default async function Home() {
                     width={32}
                     height={32}
                     referrerPolicy="no-referrer"
-                    className="h-8 w-8 rounded-full object-cover ring-2 ring-white"
+                    className="h-8 w-8 rounded-full object-cover ring-2 ring-c-surface"
                   />
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-ink text-xs font-semibold text-white ring-2 ring-white"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-c-accent text-xs font-semibold text-c-on-accent ring-2 ring-c-surface"
                   >
                     {initialsFrom(session.user.name, session.user.email)}
                   </span>
@@ -162,7 +163,7 @@ export default async function Home() {
                 <form action={handleSignOut}>
                   <button
                     type="submit"
-                    className="rounded-full border border-slate-warm/25 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-cloud"
+                    className="rounded-full border border-c-border bg-c-surface px-4 py-2 text-sm font-medium text-c-ink transition-colors hover:bg-c-accent-soft"
                   >
                     Sign out
                   </button>
@@ -172,7 +173,7 @@ export default async function Home() {
               <form action={startPlanning}>
                 <button
                   type="submit"
-                  className="rounded-full border border-slate-warm/25 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-cloud"
+                  className="rounded-full border border-c-border bg-c-surface px-4 py-2 text-sm font-medium text-c-ink transition-colors hover:bg-c-accent-soft"
                 >
                   Sign in
                 </button>
@@ -182,28 +183,21 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* Hero */}
+      {/* Hero — the app-wide sky (phase gradient + SkyClouds) shows through */}
       <section className="relative overflow-hidden">
-        {/* ambient soft clouds — not a gradient, just drifting light forms */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-          <div className="cloud-drift absolute -left-16 top-10 h-56 w-96 rounded-full bg-white/70 blur-3xl" />
-          <div className="cloud-drift-slow absolute right-0 top-40 h-64 w-[28rem] rounded-full bg-white/60 blur-3xl" />
-          <div className="cloud-drift absolute left-1/3 top-72 h-48 w-72 rounded-full bg-white/50 blur-3xl" />
-        </div>
-
         <div className="relative mx-auto max-w-3xl px-6 pb-24 pt-24 text-center sm:pt-32">
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-warm/20 bg-white/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-sky-deep">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-c-border bg-c-surface/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-c-accent backdrop-blur">
+            <span className="h-1.5 w-1.5 rounded-full bg-c-accent" />
             AI travel concierge
           </span>
 
-          <h1 className="font-display mt-7 text-5xl font-extrabold leading-[0.98] tracking-tight text-ink sm:text-7xl">
+          <h1 className="font-display mt-7 text-5xl font-extrabold leading-[0.98] tracking-tight text-c-ink sm:text-7xl">
             Plan less.
             <br />
-            <span className="text-sky-deep">Wander more.</span>
+            <span className="text-c-accent">Wander more.</span>
           </h1>
 
-          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-slate-warm">
+          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-c-muted">
             Tell Cloud9 where you&apos;re dreaming of. Your concierge shapes the
             route, the days, and the tables — so the trip plans itself and you
             just go.
@@ -212,14 +206,14 @@ export default async function Home() {
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/chat"
-              className="inline-flex items-center gap-2 rounded-full bg-sky-deep px-7 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#075985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-deep/40 focus-visible:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
             >
               Start planning
               <span aria-hidden="true">→</span>
             </Link>
             <a
               href="#handles"
-              className="inline-flex items-center rounded-full px-5 py-3.5 text-base font-semibold text-ink transition-colors hover:text-sky-deep"
+              className="inline-flex items-center rounded-full px-5 py-3.5 text-base font-semibold text-c-ink transition-colors hover:text-c-accent"
             >
               See how it works
             </a>
@@ -230,10 +224,10 @@ export default async function Home() {
       {/* Capabilities */}
       <section id="handles" className="mx-auto max-w-6xl px-6 pb-28 pt-4">
         <div className="max-w-xl">
-          <h2 className="font-display text-3xl font-bold tracking-tight text-ink">
+          <h2 className="font-display text-3xl font-bold tracking-tight text-c-ink">
             What Cloud9 handles
           </h2>
-          <p className="mt-3 text-lg text-slate-warm">
+          <p className="mt-3 text-lg text-c-muted">
             Not another booking form. A concierge that does the thinking, then
             hands you a trip worth taking.
           </p>
@@ -253,12 +247,12 @@ export default async function Home() {
                 key={c.label}
                 className={`card-float-${i + 1} relative w-full max-w-sm ${placement}`}
                 style={{
-                  filter: "drop-shadow(0 20px 30px rgba(3,105,161,0.22))",
+                  filter: "drop-shadow(0 18px 30px rgba(2,8,23,0.20))",
                 }}
               >
                 <CloudShape className="absolute inset-0 h-full w-full" />
                 <div className="relative px-12 pb-16 pt-11 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-teal text-white">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent">
                     <svg
                       viewBox="0 0 24 24"
                       className="h-7 w-7"
@@ -272,13 +266,13 @@ export default async function Home() {
                       {c.icon}
                     </svg>
                   </div>
-                  <p className="mt-4 font-display text-xs font-extrabold uppercase tracking-[0.22em] text-teal">
+                  <p className="mt-4 font-display text-xs font-extrabold uppercase tracking-[0.22em] text-c-accent">
                     {c.label}
                   </p>
-                  <h3 className="mt-1 font-display text-xl font-bold text-ink">
+                  <h3 className="mt-1 font-display text-xl font-bold text-c-ink">
                     {c.title}
                   </h3>
-                  <p className="mx-auto mt-2 max-w-[15rem] text-sm leading-relaxed text-slate-warm">
+                  <p className="mx-auto mt-2 max-w-[15rem] text-sm leading-relaxed text-c-muted">
                     {c.body}
                   </p>
                 </div>
@@ -289,8 +283,8 @@ export default async function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-warm/15">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-8 text-sm text-slate-warm sm:flex-row">
+      <footer className="border-t border-c-border">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-8 text-sm text-c-muted sm:flex-row">
           <span>© {new Date().getFullYear()} Cloud9</span>
           <span>Planning from cloud nine.</span>
         </div>
