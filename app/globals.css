@@ -240,39 +240,65 @@ body {
 }
 
 /* ── Typewriter headline (landing hero) ──────────────────────────────────
-   Base state is the full, visible headline. Only when the hero opts in
-   (data-typewriter="on", set client-side) AND motion is welcome does each
-   line wipe in once via clip-path (no reflow → no layout shift). The caret
-   is hidden unless the reveal is active. */
-.tw-caret {
-  display: none;
+   Base state is the full, visible headline (each line an inline-block on its
+   own row). Only when the hero opts in (data-typewriter="on", set client-side)
+   AND motion is welcome does each line type out: max-width animates 0 → full
+   while the line's inline-end border rides the reveal edge as the caret. The
+   caret hands off from line 1 to line 2 (one at a time) and rests, blinking,
+   attached to the final period. */
+.tw-row {
+  display: block;
 }
+.tw-line {
+  display: inline-block;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   h1[data-typewriter="on"] .tw-line {
-    animation: tw-wipe 0.7s ease-out backwards;
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+    border-inline-end: 0.06em solid transparent;
   }
-  h1[data-typewriter="on"] .tw-line:nth-of-type(2) {
-    animation-delay: 0.5s;
+  /* line 1: a solid caret rides the type, then vanishes (hands off) */
+  h1[data-typewriter="on"] .tw-row:nth-of-type(1) .tw-line {
+    animation:
+      tw-type 0.7s ease-out forwards,
+      tw-caret-lead 0.72s step-end forwards;
   }
-  h1[data-typewriter="on"] .tw-caret {
-    display: inline-block;
-    animation: tw-blink 0.9s step-end infinite;
+  /* line 2: caret arrives with the type, then rests + blinks at the period */
+  h1[data-typewriter="on"] .tw-row:nth-of-type(2) .tw-line {
+    animation:
+      tw-type 0.7s ease-out 0.66s backwards,
+      tw-caret 0.9s step-end 0.66s infinite;
   }
 }
-@keyframes tw-wipe {
+@keyframes tw-type {
   from {
-    clip-path: inset(0 100% 0 0);
+    max-width: 0;
   }
   to {
-    clip-path: inset(0 0 0 0);
+    max-width: 100%;
   }
 }
-@keyframes tw-blink {
+@keyframes tw-caret-lead {
   0%,
-  100% {
-    opacity: 1;
+  99% {
+    border-inline-end-color: var(--c-accent);
   }
-  50% {
-    opacity: 0;
+  100% {
+    border-inline-end-color: transparent;
+  }
+}
+@keyframes tw-caret {
+  0%,
+  49% {
+    border-inline-end-color: var(--c-accent);
+  }
+  50%,
+  100% {
+    border-inline-end-color: transparent;
   }
 }
