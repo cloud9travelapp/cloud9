@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth, signIn, signOut } from "@/auth";
 import HeroDithering from "@/components/landing/hero-dithering";
 import PhaseTypewriter from "@/components/landing/phase-typewriter";
+import ChatDemo from "@/components/landing/chat-demo";
 
 const capabilities = [
   {
@@ -219,6 +220,20 @@ export default async function Home() {
               See how it works
             </a>
           </div>
+        </div>
+      </section>
+
+      {/* Live chat demo — the actual product, playing a scripted trip */}
+      <section className="mx-auto max-w-3xl px-6 pb-20 pt-4 text-center">
+        <h2 className="font-display text-3xl font-bold tracking-tight text-c-ink sm:text-4xl">
+          Watch a trip take shape
+        </h2>
+        <p className="mx-auto mt-3 max-w-lg text-lg text-c-muted">
+          This is the real concierge — ask for what you want, and the plan
+          starts filling itself in.
+        </p>
+        <div className="mt-10">
+          <ChatDemo />
         </div>
       </section>
 

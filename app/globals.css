@@ -302,3 +302,22 @@ body {
     border-inline-end-color: transparent;
   }
 }
+
+/* ── Landing chat demo — each message gently fades up as it appears. No
+   fill-mode, so the resting state is fully visible (robust if the animation
+   never runs). Gated by motion preference. */
+@media (prefers-reduced-motion: no-preference) {
+  .demo-msg {
+    animation: demo-in 0.35s ease-out;
+  }
+}
+@keyframes demo-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

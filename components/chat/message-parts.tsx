@@ -1,0 +1,267 @@
+// Presentational chat pieces shared by the real chat (ChatClient) and the
+// landing's scripted demo, so the demo can never drift from the product.
+// Pure view only — no parsing/streaming logic lives here.
+
+export type FlightSegmentView = {
+  origin: string;
+  destination: string;
+  departTime: string;
+  arriveTime: string;
+};
+export type FlightOfferView = {
+  id: string;
+  airlineName: string;
+  segments: FlightSegmentView[];
+  totalDurationMinutes: number;
+  stops: number;
+  price: number;
+  currency: string;
+};
+export type Lang = "he" | "en";
+export type FlightsPayload = {
+  mock: boolean;
+  lang: Lang;
+  offers: FlightOfferView[];
+};
+
+function CloudIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
+    </svg>
+  );
+}
+
+/** Deep-sky circle with a white cloud — the Concierge mark. */
+export function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
+  return (
+    <span
+      className={`flex ${size} flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent`}
+    >
+      <CloudIcon className="h-1/2 w-1/2" />
+    </span>
+  );
+}
+
+/**
+ * A real cloud bubble: a rounded body plus overlapping "puff" lobes rising off
+ * the top, all the same cloud-white. The single drop-shadow on the wrapper
+ * traces the whole silhouette, so it reads as one soft cloud — not a blob.
+ */
+export function CloudBubble({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="w-fit max-w-[82%]"
+      style={{ filter: "drop-shadow(0 8px 16px rgba(2,8,23,0.16))" }}
+    >
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="absolute -top-2.5 start-4 h-7 w-7 rounded-full bg-c-surface"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute -top-4 start-9 h-11 w-11 rounded-full bg-c-surface"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute -top-2 end-5 h-8 w-8 rounded-full bg-c-surface"
+        />
+        <div
+          dir="auto"
+          className="relative z-[1] bg-c-surface px-4 py-2.5 text-[15px] leading-relaxed text-c-ink"
+          style={{
+            borderRadius: "26px 24px 28px 22px / 22px 28px 24px 26px",
+            unicodeBidi: "plaintext",
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The user's own message bubble (accent fill, own bidi direction). */
+export function UserBubble({ content }: { content: string }) {
+  return (
+    <div
+      dir="auto"
+      className="w-fit max-w-[82%] rounded-2xl bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-sm [unicode-bidi:plaintext]"
+    >
+      <span className="whitespace-pre-wrap">{content}</span>
+    </div>
+  );
+}
+
+/** The "thinking" dots shown in an empty assistant bubble. */
+export function LoadingDots() {
+  return (
+    <span className="inline-flex gap-1 py-1">
+      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/50 [animation-delay:-0.2s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/75 [animation-delay:-0.1s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent" />
+    </span>
+  );
+}
+
+/**
+ * Quick-reply option pills. Interactive when `onSelect` is given (real chat);
+ * inert + aria-hidden when omitted (landing demo preview).
+ */
+export function QuickReplyPills({
+  options,
+  onSelect,
+}: {
+  options: string[];
+  onSelect?: (opt: string) => void;
+}) {
+  const interactive = typeof onSelect === "function";
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {options.map((opt, oi) => (
+        <button
+          key={oi}
+          type="button"
+          dir="auto"
+          onClick={interactive ? () => onSelect!(opt) : undefined}
+          tabIndex={interactive ? 0 : -1}
+          aria-hidden={interactive ? undefined : true}
+          className={`rounded-full border border-c-border bg-c-surface px-4 py-2 text-sm text-c-accent transition-colors hover:bg-c-accent-soft${
+            interactive ? "" : " pointer-events-none"
+          }`}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function isoTime(iso: string): string {
+  const m = iso.match(/T(\d{2}:\d{2})/); // wall-clock time straight from the ISO
+  return m ? m[1] : iso;
+}
+
+const LABELS: Record<
+  Lang,
+  {
+    duration: (min: number) => string;
+    stops: (n: number) => string;
+    mock: string;
+  }
+> = {
+  he: {
+    duration: (min) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m === 0 ? `${h}ש` : `${h}ש ${m}ד`;
+    },
+    stops: (n) => (n <= 0 ? "ישיר" : n === 1 ? "עצירה אחת" : `${n} עצירות`),
+    mock: "נתוני דמה",
+  },
+  en: {
+    duration: (min) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    },
+    stops: (n) => (n <= 0 ? "Direct" : n === 1 ? "1 stop" : `${n} stops`),
+    mock: "Test data",
+  },
+};
+
+function PlaneIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="mx-0.5 h-3.5 w-3.5 flex-none text-c-accent"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M2 21l21-9L2 3v7l15 2-15 2z" />
+    </svg>
+  );
+}
+
+export function FlightCard({
+  offer,
+  mock,
+  lang,
+}: {
+  offer: FlightOfferView;
+  mock: boolean;
+  lang: Lang;
+}) {
+  const L = LABELS[lang];
+  const first = offer.segments[0];
+  const last = offer.segments[offer.segments.length - 1];
+  const price =
+    offer.currency === "USD"
+      ? `$${offer.price}`
+      : `${offer.price} ${offer.currency}`;
+  const durationDir = lang === "he" ? "rtl" : "ltr";
+
+  return (
+    <div className="rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm">
+      {/* airline (left) + price (right) */}
+      <div dir="ltr" className="flex items-center justify-between gap-3">
+        <span dir="auto" className="truncate text-sm font-semibold text-c-ink">
+          {offer.airlineName}
+        </span>
+        <span className="flex-none text-lg font-bold text-c-accent tabular-nums">
+          {price}
+        </span>
+      </div>
+
+      {/* timeline — always LTR so departure stays on the left */}
+      <div dir="ltr" className="mt-2 flex items-center gap-2">
+        <div className="flex flex-col items-center">
+          <span className="text-[15px] font-medium text-c-ink tabular-nums">
+            {isoTime(first.departTime)}
+          </span>
+          <span className="text-xs text-c-muted">{first.origin}</span>
+        </div>
+
+        <div className="flex flex-1 flex-col items-center">
+          <span dir={durationDir} className="text-[11px] text-c-muted tabular-nums">
+            {L.duration(offer.totalDurationMinutes)}
+          </span>
+          <div className="my-1 flex w-full items-center">
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-c-accent" />
+            <span className="flex-1 border-t border-dashed border-c-accent/40" />
+            <PlaneIcon />
+            <span className="flex-1 border-t border-dashed border-c-accent/40" />
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-c-accent" />
+          </div>
+          <span dir={durationDir} className="text-[11px] text-c-muted">
+            {L.stops(offer.stops)}
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center">
+          <span className="text-[15px] font-medium text-c-ink tabular-nums">
+            {isoTime(last.arriveTime)}
+          </span>
+          <span className="text-xs text-c-muted">{last.destination}</span>
+        </div>
+      </div>
+
+      {/* mock-data tag (per language, only while mock) */}
+      {mock ? (
+        <div dir="auto" className="mt-1.5 text-[10px] text-c-muted">
+          {L.mock}
+        </div>
+      ) : null}
+    </div>
+  );
+}
