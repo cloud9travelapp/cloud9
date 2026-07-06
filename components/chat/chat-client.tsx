@@ -63,8 +63,12 @@ function CloudBubble({ children }: { children: React.ReactNode }) {
           className="absolute -top-2 right-5 h-8 w-8 rounded-full bg-c-surface"
         />
         <div
+          dir="auto"
           className="relative z-[1] bg-c-surface px-4 py-2.5 text-[15px] leading-relaxed text-c-ink"
-          style={{ borderRadius: "26px 24px 28px 22px / 22px 28px 24px 26px" }}
+          style={{
+            borderRadius: "26px 24px 28px 22px / 22px 28px 24px 26px",
+            unicodeBidi: "plaintext",
+          }}
         >
           {children}
         </div>
@@ -460,7 +464,7 @@ export default function ChatClient({
             <div className="mt-24 flex flex-col items-center text-center">
               <CloudMark size="h-16 w-16" />
               <h1 className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink">
-                Where to next, {firstName}?
+                Where to next, <bdi>{firstName}</bdi>?
               </h1>
               <p className="mt-2 max-w-sm text-c-muted">
                 Tell the Concierge what you&apos;re dreaming of. We&apos;ll take
@@ -472,7 +476,10 @@ export default function ChatClient({
               if (m.role === "user") {
                 return (
                   <div key={i} className="flex flex-col items-end">
-                    <div className="w-fit max-w-[82%] rounded-2xl bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-sm">
+                    <div
+                      dir="auto"
+                      className="w-fit max-w-[82%] rounded-2xl bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-sm [unicode-bidi:plaintext]"
+                    >
                       <span className="whitespace-pre-wrap">{m.content}</span>
                     </div>
                     <span className="mt-1.5 px-1 text-[11px] text-c-muted">
