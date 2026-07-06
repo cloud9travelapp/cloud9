@@ -220,3 +220,41 @@ body {
     animation: card-float 5.7s ease-in-out -3.2s infinite alternate;
   }
 }
+
+/* ── Typewriter headline (landing hero) ──────────────────────────────────
+   Base state is the full, visible headline. Only when the hero opts in
+   (data-typewriter="on", set client-side) AND motion is welcome does each
+   line wipe in once via clip-path (no reflow → no layout shift). The caret
+   is hidden unless the reveal is active. */
+.tw-caret {
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  h1[data-typewriter="on"] .tw-line {
+    animation: tw-wipe 0.7s ease-out backwards;
+  }
+  h1[data-typewriter="on"] .tw-line:nth-of-type(2) {
+    animation-delay: 0.5s;
+  }
+  h1[data-typewriter="on"] .tw-caret {
+    display: inline-block;
+    animation: tw-blink 0.9s step-end infinite;
+  }
+}
+@keyframes tw-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes tw-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

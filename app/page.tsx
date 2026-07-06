@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { auth, signIn, signOut } from "@/auth";
+import HeroDithering from "@/components/landing/hero-dithering";
+import PhaseTypewriter from "@/components/landing/phase-typewriter";
 
 const capabilities = [
   {
@@ -183,19 +185,18 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* Hero — the app-wide sky (phase gradient + SkyClouds) shows through */}
-      <section className="relative overflow-hidden">
-        <div className="relative mx-auto max-w-3xl px-6 pb-24 pt-24 text-center sm:pt-32">
+      {/* Hero — living sky: phase gradient + SkyClouds + the Dithering mist */}
+      <section className="relative isolate overflow-hidden">
+        <HeroDithering />
+        <div className="relative z-10 mx-auto max-w-3xl px-6 pb-24 pt-24 text-center sm:pt-32">
           <span className="inline-flex items-center gap-2 rounded-full border border-c-border bg-c-surface/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-c-accent backdrop-blur">
             <span className="h-1.5 w-1.5 rounded-full bg-c-accent" />
             AI travel concierge
           </span>
 
-          <h1 className="font-display mt-7 text-5xl font-extrabold leading-[0.98] tracking-tight text-c-ink sm:text-7xl">
-            Plan less.
-            <br />
-            <span className="text-c-accent">Wander more.</span>
-          </h1>
+          <div className="mt-7">
+            <PhaseTypewriter />
+          </div>
 
           <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-c-muted">
             Tell Cloud9 where you&apos;re dreaming of. Your concierge shapes the
