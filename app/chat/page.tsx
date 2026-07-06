@@ -19,14 +19,8 @@ export default async function ChatPage({
   // Signed-out visitors get a sign-in gate that returns them here afterwards.
   if (!session?.user?.googleId) {
     return (
-      <div
-        className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center"
-        style={{
-          background:
-            "linear-gradient(to bottom, #c9e8fb 0%, #dff1fd 38%, #f0f9ff 100%)",
-        }}
-      >
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-deep text-white shadow-sm">
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm">
           <svg
             viewBox="0 0 24 24"
             className="h-7 w-7"
@@ -40,10 +34,10 @@ export default async function ChatPage({
             <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
           </svg>
         </span>
-        <h1 className="font-display mt-6 text-3xl font-extrabold tracking-tight text-ink">
+        <h1 className="font-display mt-6 text-3xl font-extrabold tracking-tight text-c-ink">
           Sign in to start planning
         </h1>
-        <p className="mt-2 max-w-sm text-slate-warm">
+        <p className="mt-2 max-w-sm text-c-muted">
           The Cloud9 Concierge remembers your trips and preferences, so you need
           to be signed in.
         </p>
@@ -56,7 +50,7 @@ export default async function ChatPage({
         >
           <button
             type="submit"
-            className="rounded-full bg-sky-deep px-8 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#075985]"
+            className="rounded-full bg-c-accent px-8 py-3.5 text-base font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90"
           >
             Sign in with Google
           </button>

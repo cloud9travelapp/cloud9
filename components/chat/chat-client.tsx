@@ -31,7 +31,7 @@ function CloudIcon({ className }: { className?: string }) {
 function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
   return (
     <span
-      className={`flex ${size} flex-none items-center justify-center rounded-full bg-sky-deep text-white`}
+      className={`flex ${size} flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent`}
     >
       <CloudIcon className="h-1/2 w-1/2" />
     </span>
@@ -47,23 +47,23 @@ function CloudBubble({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="w-fit max-w-[82%]"
-      style={{ filter: "drop-shadow(0 10px 16px rgba(3,105,161,0.18))" }}
+      style={{ filter: "drop-shadow(0 8px 16px rgba(2,8,23,0.16))" }}
     >
       <div className="relative">
         <span
           aria-hidden="true"
-          className="absolute -top-2.5 left-4 h-7 w-7 rounded-full bg-cloud"
+          className="absolute -top-2.5 left-4 h-7 w-7 rounded-full bg-c-surface"
         />
         <span
           aria-hidden="true"
-          className="absolute -top-4 left-9 h-11 w-11 rounded-full bg-cloud"
+          className="absolute -top-4 left-9 h-11 w-11 rounded-full bg-c-surface"
         />
         <span
           aria-hidden="true"
-          className="absolute -top-2 right-5 h-8 w-8 rounded-full bg-cloud"
+          className="absolute -top-2 right-5 h-8 w-8 rounded-full bg-c-surface"
         />
         <div
-          className="relative z-[1] bg-cloud px-4 py-2.5 text-[15px] leading-relaxed text-ink"
+          className="relative z-[1] bg-c-surface px-4 py-2.5 text-[15px] leading-relaxed text-c-ink"
           style={{ borderRadius: "26px 24px 28px 22px / 22px 28px 24px 26px" }}
         >
           {children}
@@ -213,7 +213,7 @@ function PlaneIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="mx-0.5 h-3.5 w-3.5 flex-none text-orange-400"
+      className="mx-0.5 h-3.5 w-3.5 flex-none text-c-accent"
       fill="currentColor"
       aria-hidden="true"
     >
@@ -241,13 +241,13 @@ function FlightCard({
   const durationDir = lang === "he" ? "rtl" : "ltr";
 
   return (
-    <div className="rounded-xl border border-orange-200 bg-white px-3 py-2.5 shadow-sm">
+    <div className="rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm">
       {/* airline (left) + price (right) */}
       <div dir="ltr" className="flex items-center justify-between gap-3">
-        <span dir="auto" className="truncate text-sm font-semibold text-ink">
+        <span dir="auto" className="truncate text-sm font-semibold text-c-ink">
           {offer.airlineName}
         </span>
-        <span className="flex-none text-lg font-bold text-orange-900">
+        <span className="flex-none text-lg font-bold text-c-accent tabular-nums">
           {price}
         </span>
       </div>
@@ -255,39 +255,39 @@ function FlightCard({
       {/* timeline — always LTR so departure stays on the left */}
       <div dir="ltr" className="mt-2 flex items-center gap-2">
         <div className="flex flex-col items-center">
-          <span className="text-[15px] font-medium text-ink">
+          <span className="text-[15px] font-medium text-c-ink tabular-nums">
             {isoTime(first.departTime)}
           </span>
-          <span className="text-xs text-slate-warm">{first.origin}</span>
+          <span className="text-xs text-c-muted">{first.origin}</span>
         </div>
 
         <div className="flex flex-1 flex-col items-center">
-          <span dir={durationDir} className="text-[11px] text-slate-warm">
+          <span dir={durationDir} className="text-[11px] text-c-muted tabular-nums">
             {L.duration(offer.totalDurationMinutes)}
           </span>
           <div className="my-1 flex w-full items-center">
-            <span className="h-1.5 w-1.5 flex-none rounded-full bg-orange-300" />
-            <span className="flex-1 border-t border-dashed border-orange-300" />
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-c-accent" />
+            <span className="flex-1 border-t border-dashed border-c-accent/40" />
             <PlaneIcon />
-            <span className="flex-1 border-t border-dashed border-orange-300" />
-            <span className="h-1.5 w-1.5 flex-none rounded-full bg-orange-300" />
+            <span className="flex-1 border-t border-dashed border-c-accent/40" />
+            <span className="h-1.5 w-1.5 flex-none rounded-full bg-c-accent" />
           </div>
-          <span dir={durationDir} className="text-[11px] text-slate-warm">
+          <span dir={durationDir} className="text-[11px] text-c-muted">
             {L.stops(offer.stops)}
           </span>
         </div>
 
         <div className="flex flex-col items-center">
-          <span className="text-[15px] font-medium text-ink">
+          <span className="text-[15px] font-medium text-c-ink tabular-nums">
             {isoTime(last.arriveTime)}
           </span>
-          <span className="text-xs text-slate-warm">{last.destination}</span>
+          <span className="text-xs text-c-muted">{last.destination}</span>
         </div>
       </div>
 
       {/* mock-data tag (per language, only while mock) */}
       {mock ? (
-        <div dir="auto" className="mt-1.5 text-[10px] text-slate-warm/70">
+        <div dir="auto" className="mt-1.5 text-[10px] text-c-muted">
           {L.mock}
         </div>
       ) : null}
@@ -409,22 +409,16 @@ export default function ChatClient({
   const isEmpty = messages.length === 0;
 
   return (
-    <div
-      className="flex h-full flex-col"
-      style={{
-        background:
-          "linear-gradient(to bottom, #c9e8fb 0%, #dff1fd 38%, #f0f9ff 100%)",
-      }}
-    >
-      {/* Header — floats over the sky */}
-      <header className="flex items-center justify-between border-b border-white/50 bg-white/55 px-4 py-3 backdrop-blur sm:px-6">
+    <div className="flex h-full flex-col">
+      {/* Header — frosted, floats over the sky */}
+      <header className="flex items-center justify-between border-b border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex items-center gap-2">
           {onMenuClick ? (
             <button
               type="button"
               onClick={onMenuClick}
               aria-label="Open trips"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-ink transition-colors hover:bg-white/70 md:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-c-ink transition-colors hover:bg-c-accent-soft md:hidden"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -442,15 +436,15 @@ export default function ChatClient({
           ) : null}
           <Link
             href="/"
-            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sky-deep/40"
+            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40"
           >
             <CloudMark size="h-9 w-9" />
             <span className="leading-tight">
-              <span className="block font-display text-sm font-bold text-ink">
+              <span className="block font-display text-sm font-bold text-c-ink">
                 Cloud9 Concierge
               </span>
-              <span className="flex items-center gap-1.5 text-xs text-teal">
-                <span className="h-1.5 w-1.5 rounded-full bg-teal" />
+              <span className="flex items-center gap-1.5 text-xs text-c-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-c-accent" />
                 online
               </span>
             </span>
@@ -459,26 +453,16 @@ export default function ChatClient({
         <span className="w-9" aria-hidden="true" />
       </header>
 
-      {/* Messages */}
+      {/* Messages — the app-wide sky (SkyClouds + phase gradient) shows through */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 py-6">
-        {/* ambient sky clouds */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-        >
-          <div className="cloud-drift absolute left-6 top-10 h-24 w-56 rounded-full bg-white/50 blur-2xl" />
-          <div className="cloud-drift-slow absolute right-0 top-40 h-28 w-72 rounded-full bg-white/45 blur-2xl" />
-          <div className="cloud-drift absolute left-1/4 top-80 h-24 w-64 rounded-full bg-white/40 blur-2xl" />
-        </div>
-
         <div className="relative z-[1] mx-auto flex max-w-2xl flex-col gap-5">
           {isEmpty ? (
             <div className="mt-24 flex flex-col items-center text-center">
               <CloudMark size="h-16 w-16" />
-              <h1 className="font-display mt-5 text-3xl font-extrabold tracking-tight text-ink">
+              <h1 className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink">
                 Where to next, {firstName}?
               </h1>
-              <p className="mt-2 max-w-sm text-slate-warm">
+              <p className="mt-2 max-w-sm text-c-muted">
                 Tell the Concierge what you&apos;re dreaming of. We&apos;ll take
                 it from a spark to a plan.
               </p>
@@ -488,10 +472,10 @@ export default function ChatClient({
               if (m.role === "user") {
                 return (
                   <div key={i} className="flex flex-col items-end">
-                    <div className="w-fit max-w-[82%] rounded-2xl bg-teal-ink px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-sm">
+                    <div className="w-fit max-w-[82%] rounded-2xl bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-sm">
                       <span className="whitespace-pre-wrap">{m.content}</span>
                     </div>
-                    <span className="mt-1.5 px-1 text-[11px] text-slate-warm">
+                    <span className="mt-1.5 px-1 text-[11px] text-c-muted">
                       {formatTime(m.created_at)}
                     </span>
                   </div>
@@ -517,13 +501,13 @@ export default function ChatClient({
                       <span className="whitespace-pre-wrap">{text}</span>
                     ) : (
                       <span className="inline-flex gap-1 py-1">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-sky-deep/60 [animation-delay:-0.2s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-sky-deep/80 [animation-delay:-0.1s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-sky-deep" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/50 [animation-delay:-0.2s]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/75 [animation-delay:-0.1s]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent" />
                       </span>
                     )}
                   </CloudBubble>
-                  <span className="mt-1.5 px-1 text-[11px] text-slate-warm">
+                  <span className="mt-1.5 px-1 text-[11px] text-c-muted">
                     {formatTime(m.created_at)}
                   </span>
                   {options && isLast && !isStreaming ? (
@@ -534,7 +518,7 @@ export default function ChatClient({
                           type="button"
                           dir="auto"
                           onClick={() => void send(opt)}
-                          className="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm text-orange-900 transition-colors hover:bg-orange-50"
+                          className="rounded-full border border-c-border bg-c-surface px-4 py-2 text-sm text-c-accent transition-colors hover:bg-c-accent-soft"
                         >
                           {opt}
                         </button>
@@ -560,8 +544,8 @@ export default function ChatClient({
         </div>
       </div>
 
-      {/* Composer — floats over the sky */}
-      <div className="border-t border-white/50 bg-white/60 px-4 py-3 backdrop-blur sm:px-0">
+      {/* Composer — frosted, floats over the sky */}
+      <div className="border-t border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-0">
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <textarea
             value={input}
@@ -569,13 +553,13 @@ export default function ChatClient({
             onKeyDown={onKeyDown}
             rows={1}
             placeholder="Message the Concierge…"
-            className="max-h-40 flex-1 resize-none rounded-3xl border border-slate-warm/20 bg-white px-4 py-3 text-[15px] text-ink outline-none placeholder:text-slate-warm/70 focus:border-sky-deep focus:ring-2 focus:ring-sky-deep/20"
+            className="max-h-40 flex-1 resize-none rounded-3xl border border-c-border bg-c-surface px-4 py-3 text-[15px] text-c-ink outline-none placeholder:text-c-muted focus:border-c-accent focus:ring-2 focus:ring-c-accent/25"
           />
           <button
             type="button"
             onClick={() => void send()}
             disabled={isStreaming || !input.trim()}
-            className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-sky-deep text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Send message"
           >
             <svg

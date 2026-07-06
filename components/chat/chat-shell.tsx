@@ -24,7 +24,7 @@ export default function ChatShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-cloud">
+    <div className="flex h-[100dvh] overflow-hidden">
       {/* Desktop sidebar */}
       <TripSidebar
         trips={trips}
