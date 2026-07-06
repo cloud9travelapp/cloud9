@@ -1,14 +1,92 @@
 @import "tailwindcss";
 
-:root {
-  /* Cloud9 brand — a sky-world palette */
-  --sky-deep: #0369a1; /* primary: deep sky blue */
-  --teal: #059669; /* accent: teal-green (used sparingly) */
-  --teal-ink: #047857; /* AA-safe teal for white text (user bubbles) */
-  --cloud: #f0f9ff; /* soft cloud white: surfaces */
-  --slate: #64748b; /* warm gray: meta + hairlines only */
-  --ink: #0f172a; /* body + headings (contrast) */
+/* ── Time-of-day role tokens ─────────────────────────────────────────────
+   Registered as <color> so gradients/text can transition smoothly when the
+   phase changes (falls back to an instant swap on older browsers). */
+@property --c-bg-1 { syntax: "<color>"; inherits: true; initial-value: #fbfcff; }
+@property --c-bg-2 { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --c-surface { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --c-ink { syntax: "<color>"; inherits: true; initial-value: #0f172a; }
+@property --c-muted { syntax: "<color>"; inherits: true; initial-value: #64748b; }
+@property --c-accent { syntax: "<color>"; inherits: true; initial-value: #0369a1; }
+@property --c-accent-soft { syntax: "<color>"; inherits: true; initial-value: #e0f2fe; }
+@property --c-border { syntax: "<color>"; inherits: true; initial-value: #e7edf5; }
 
+/* Midday is the default (also the SSR value before the phase script runs). */
+:root,
+:root[data-phase="midday"] {
+  --c-bg-1: #fbfcff;
+  --c-bg-2: #ffffff;
+  --c-surface: #ffffff;
+  --c-ink: #0f172a;
+  --c-muted: #5b6b82;
+  --c-accent: #0369a1;
+  --c-accent-soft: #e0f2fe;
+  --c-border: #e7edf5;
+}
+
+/* Morning — bright, airy, soft sky blues + white. */
+:root[data-phase="morning"] {
+  --c-bg-1: #e8f3ff;
+  --c-bg-2: #ffffff;
+  --c-surface: #ffffff;
+  --c-ink: #1e293b;
+  --c-muted: #5b6b82;
+  --c-accent: #2f74d0;
+  --c-accent-soft: #dbeafe;
+  --c-border: #dbeafe;
+}
+
+/* Sunset — coral, amber, sand; warm golden-hour tones. */
+:root[data-phase="sunset"] {
+  --c-bg-1: #ffe1cb;
+  --c-bg-2: #fff3e6;
+  --c-surface: #fff8f2;
+  --c-ink: #45291c;
+  --c-muted: #8a6a58;
+  --c-accent: #d85f2c;
+  --c-accent-soft: #ffe0cc;
+  --c-border: #f4d9c4;
+}
+
+/* Night — deep calm blues, dark surfaces, soft warm accents. */
+:root[data-phase="night"] {
+  --c-bg-1: #0a1a30;
+  --c-bg-2: #10233d;
+  --c-surface: #16273f;
+  --c-ink: #eaf0fa;
+  --c-muted: #9fb0c9;
+  --c-accent: #f6b17a;
+  --c-accent-soft: #23364e;
+  --c-border: #274059;
+}
+
+/* Smooth, unnoticeable transition when the phase changes. */
+html {
+  transition:
+    --c-bg-1 900ms ease,
+    --c-bg-2 900ms ease,
+    --c-surface 900ms ease,
+    --c-ink 900ms ease,
+    --c-muted 900ms ease,
+    --c-accent 900ms ease,
+    --c-accent-soft 900ms ease,
+    --c-border 900ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    transition: none;
+  }
+}
+
+/* ── Legacy named tokens (kept until Stage 2 migrates components to roles) ── */
+:root {
+  --sky-deep: #0369a1;
+  --teal: #059669;
+  --teal-ink: #047857;
+  --cloud: #f0f9ff;
+  --slate: #64748b;
+  --ink: #0f172a;
   --background: var(--cloud);
   --foreground: var(--ink);
 }
@@ -23,15 +101,32 @@
   --color-slate-warm: var(--slate);
   --color-ink: var(--ink);
 
-  --font-sans: var(--font-inter);
-  --font-display: var(--font-jakarta);
+  /* New time-of-day role tokens exposed as Tailwind colors for Stage 2. */
+  --color-c-bg-1: var(--c-bg-1);
+  --color-c-bg-2: var(--c-bg-2);
+  --color-c-surface: var(--c-surface);
+  --color-c-ink: var(--c-ink);
+  --color-c-muted: var(--c-muted);
+  --color-c-accent: var(--c-accent);
+  --color-c-accent-soft: var(--c-accent-soft);
+  --color-c-border: var(--c-border);
+
+  --font-sans: var(--font-heebo);
+  --font-display: var(--font-suez);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  background: linear-gradient(to bottom, var(--c-bg-1) 0%, var(--c-bg-2) 100%);
+  background-attachment: fixed;
+  color: var(--c-ink);
+  font-family: var(--font-heebo), system-ui, -apple-system, sans-serif;
   line-height: 1.6;
+  transition: color 900ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }
 
 /* Ambient sky clouds drift gently — only when motion is welcome. */

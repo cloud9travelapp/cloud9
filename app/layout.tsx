@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
+import { Suez_One, Heebo } from "next/font/google";
 import "./globals.css";
+import TimeOfDay from "@/components/theme/time-of-day";
 
-const displayFace = Plus_Jakarta_Sans({
-  variable: "--font-jakarta",
-  subsets: ["latin"],
-  weight: ["600", "700", "800"],
+// Suez One — display only (big moments). Heebo — body & UI. Both cover
+// Hebrew + Latin so the bilingual type looks intentional in either language.
+const displayFace = Suez_One({
+  variable: "--font-suez",
+  subsets: ["latin", "hebrew"],
+  weight: ["400"],
   display: "swap",
 });
 
-const bodyFace = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const bodyFace = Heebo({
+  variable: "--font-heebo",
+  subsets: ["latin", "hebrew"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -22,6 +25,10 @@ export const metadata: Metadata = {
     "Plan less, wander more. Cloud9 is your AI travel concierge for trips that plan themselves.",
 };
 
+// Set the sky phase from the user's local time BEFORE first paint, so the
+// palette is correct on load with no flash and no layout shift.
+const PHASE_SCRIPT = `(function(){try{var h=new Date().getHours();var p=h>=5&&h<11?'morning':h<16?'midday':h<19?'sunset':'night';document.documentElement.dataset.phase=p;}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,9 +37,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${displayFace.variable} ${bodyFace.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: PHASE_SCRIPT }} />
+        <TimeOfDay />
+        {children}
+      </body>
     </html>
   );
 }
