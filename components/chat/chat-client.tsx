@@ -52,15 +52,15 @@ function CloudBubble({ children }: { children: React.ReactNode }) {
       <div className="relative">
         <span
           aria-hidden="true"
-          className="absolute -top-2.5 left-4 h-7 w-7 rounded-full bg-c-surface"
+          className="absolute -top-2.5 start-4 h-7 w-7 rounded-full bg-c-surface"
         />
         <span
           aria-hidden="true"
-          className="absolute -top-4 left-9 h-11 w-11 rounded-full bg-c-surface"
+          className="absolute -top-4 start-9 h-11 w-11 rounded-full bg-c-surface"
         />
         <span
           aria-hidden="true"
-          className="absolute -top-2 right-5 h-8 w-8 rounded-full bg-c-surface"
+          className="absolute -top-2 end-5 h-8 w-8 rounded-full bg-c-surface"
         />
         <div
           dir="auto"

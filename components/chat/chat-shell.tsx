@@ -24,7 +24,7 @@ export default function ChatShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden">
+    <div dir="rtl" className="flex h-[100dvh] overflow-hidden">
       {/* Desktop sidebar */}
       <TripSidebar
         trips={trips}
@@ -44,8 +44,8 @@ export default function ChatShell({
         trips={trips}
         activeTripId={activeTripId}
         onNavigate={() => setDrawerOpen(false)}
-        className="fixed inset-y-0 left-0 z-50 flex shadow-xl md:hidden"
-        style={{ transform: drawerOpen ? "translateX(0)" : "translateX(-100%)" }}
+        className="fixed inset-y-0 start-0 z-50 flex shadow-xl md:hidden"
+        style={{ transform: drawerOpen ? "translateX(0)" : "translateX(100%)" }}
       />
 
       {/* Chat */}

@@ -27,7 +27,7 @@ export default function TripSidebar({
   return (
     <aside
       style={style}
-      className={`w-72 shrink-0 flex-col border-r border-c-border bg-c-surface/80 backdrop-blur ${className}`}
+      className={`w-72 shrink-0 flex-col border-e border-c-border bg-c-surface/80 backdrop-blur ${className}`}
     >
       {/* New trip */}
       <div className="p-3">

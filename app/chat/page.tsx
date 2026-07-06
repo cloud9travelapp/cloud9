@@ -19,7 +19,7 @@ export default async function ChatPage({
   // Signed-out visitors get a sign-in gate that returns them here afterwards.
   if (!session?.user?.googleId) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
+      <div dir="rtl" className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm">
           <svg
             viewBox="0 0 24 24"
