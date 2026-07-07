@@ -1,0 +1,31 @@
+// Provider-agnostic accommodation types. These are the only shapes the rest of
+// the app knows about; any real provider (Hotelbeds, Amadeus, …) maps its
+// response to these. Amenities / distance / type are NEUTRAL KEYS localized in
+// the UI (mirrors the flights pattern; real hotel APIs return facility codes).
+
+export type StayType = "hotel" | "apartment" | "boutique" | "hostel" | "resort";
+
+export type BudgetLevel = "budget" | "mid" | "luxury";
+
+export type StayQuery = {
+  destination: string; // city / area name, e.g. "Rome"
+  checkIn: string; // "YYYY-MM-DD"
+  checkOut: string; // "YYYY-MM-DD"
+  guests?: number; // default 2
+  rooms?: number; // default 1
+  budgetLevel?: BudgetLevel; // default "mid"
+};
+
+export type StayOffer = {
+  id: string;
+  name: string; // proper noun, e.g. "Hotel Artemide"
+  type: StayType;
+  area: string; // neighbourhood / area proper noun, e.g. "Trastevere"
+  stars: number; // 1–5; 0 = category/unrated
+  amenities: string[]; // neutral keys, e.g. ["pool","breakfast","seaview"]
+  distanceKey: string; // POI key: beach | center | oldTown | station | park
+  distanceMinutes: number; // walking minutes to that POI
+  pricePerNight: number;
+  totalPrice: number; // pricePerNight × nights × rooms
+  currency: string;
+};

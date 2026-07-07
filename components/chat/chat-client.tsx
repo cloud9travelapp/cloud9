@@ -10,8 +10,11 @@ import {
   LoadingDots,
   QuickReplyPills,
   FlightCard,
+  StayCard,
   type FlightOfferView,
   type FlightsPayload,
+  type StayOfferView,
+  type StaysPayload,
   type Lang,
 } from "./message-parts";
 import HeroDithering from "@/components/landing/hero-dithering";
@@ -113,6 +116,54 @@ function splitFlights(content: string): {
     return { text, flights: { mock, lang, offers: offers.slice(0, 8) } };
   } catch {
     return { text, flights: null };
+  }
+}
+
+const STAYS_START = "<<STAYS>>";
+const STAYS_END = "<<END>>";
+
+/**
+ * Mirror of splitFlights for the <<STAYS>> block. Strips from the marker so raw
+ * JSON never shows; parses only a complete, valid block; any failure degrades to
+ * plain text. `lang` defaults to "en" unless exactly "he".
+ */
+function splitStays(content: string): {
+  text: string;
+  stays: StaysPayload | null;
+} {
+  const start = content.indexOf(STAYS_START);
+  if (start === -1) return { text: content, stays: null };
+  const text = content.slice(0, start).trimEnd();
+  const end = content.indexOf(STAYS_END, start);
+  if (end === -1) return { text, stays: null };
+  const raw = content.slice(start + STAYS_START.length, end).trim();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    let mock = true;
+    let lang: Lang = "en";
+    let offersRaw: unknown;
+    if (Array.isArray(parsed)) {
+      offersRaw = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
+      offersRaw = obj.offers;
+      mock = obj.mock !== false; // label unless explicitly false
+      lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
+    }
+    if (!Array.isArray(offersRaw)) return { text, stays: null };
+    const offers = offersRaw.filter((o): o is StayOfferView => {
+      const x = o as Partial<StayOfferView>;
+      return (
+        !!x &&
+        typeof x.name === "string" &&
+        typeof x.type === "string" &&
+        typeof x.pricePerNight === "number"
+      );
+    });
+    if (!offers.length) return { text, stays: null };
+    return { text, stays: { mock, lang, offers: offers.slice(0, 8) } };
+  } catch {
+    return { text, stays: null };
   }
 }
 
@@ -313,15 +364,23 @@ export default function ChatClient({
               }
 
               // Strip any special block from the display text, then decide
-              // whether to show quick-reply pills or flight cards below.
+              // whether to show quick-reply pills, flight cards, or stay cards
+              // below (mutually exclusive: one block per message).
               const opt = splitOptions(m.content);
               const options = opt.options;
               let text = opt.text;
               let flights: FlightsPayload | null = null;
+              let stays: StaysPayload | null = null;
               if (!options) {
                 const fl = splitFlights(m.content);
-                text = fl.text;
-                flights = fl.flights;
+                if (fl.flights) {
+                  text = fl.text;
+                  flights = fl.flights;
+                } else {
+                  const st = splitStays(m.content);
+                  text = st.text;
+                  stays = st.stays;
+                }
               }
               const isLast = i === messages.length - 1;
               return (
@@ -350,6 +409,18 @@ export default function ChatClient({
                           offer={offer}
                           mock={flights.mock}
                           lang={flights.lang}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {stays ? (
+                    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
+                      {stays.offers.map((offer) => (
+                        <StayCard
+                          key={offer.id}
+                          offer={offer}
+                          mock={stays.mock}
+                          lang={stays.lang}
                         />
                       ))}
                     </div>

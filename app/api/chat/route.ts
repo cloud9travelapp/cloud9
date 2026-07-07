@@ -5,6 +5,8 @@ import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
 import { detectPreferences, mergePreferences } from "@/lib/preferences";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
+import { searchStays, IS_MOCK_STAY_PROVIDER } from "@/lib/stays/provider";
+import type { StayQuery } from "@/lib/stays/types";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -60,11 +62,36 @@ const FLIGHT_TOOL: Anthropic.Tool = {
   },
 };
 
+const STAY_TOOL: Anthropic.Tool = {
+  name: "search_stays",
+  description:
+    "Search for hotels and accommodation in a destination. Only call this once you know the destination (city or area), the check-in date, and the check-out date.",
+  input_schema: {
+    type: "object",
+    properties: {
+      destination: {
+        type: "string",
+        description: "City or area name, e.g. Rome",
+      },
+      checkIn: { type: "string", description: "Check-in date, YYYY-MM-DD" },
+      checkOut: { type: "string", description: "Check-out date, YYYY-MM-DD" },
+      guests: { type: "integer", description: "Number of guests (default 2)" },
+      rooms: { type: "integer", description: "Number of rooms (default 1)" },
+      budgetLevel: {
+        type: "string",
+        enum: ["budget", "mid", "luxury"],
+        description: "Budget level (optional)",
+      },
+    },
+    required: ["destination", "checkIn", "checkOut"],
+  },
+};
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("Flight search timed out")), ms),
+      setTimeout(() => reject(new Error("Search timed out")), ms),
     ),
   ]);
 }
@@ -99,6 +126,42 @@ async function runFlightSearch(input: unknown): Promise<string> {
   } catch (err) {
     console.error("Flight search failed:", err);
     return "The flight search is unavailable right now. Apologize briefly in the user's language and offer to try again.";
+  }
+}
+
+/**
+ * Run a search_stays tool call and return a string tool result. On success:
+ * JSON `{ mock, offers }`. On any failure/timeout: a short error sentence — the
+ * stay layer never throws into the stream. Mirrors runFlightSearch.
+ */
+async function runStaySearch(input: unknown): Promise<string> {
+  try {
+    const q = (input ?? {}) as Partial<StayQuery>;
+    const query: StayQuery = {
+      destination: String(q.destination ?? "").trim(),
+      checkIn: String(q.checkIn ?? ""),
+      checkOut: String(q.checkOut ?? ""),
+      guests: typeof q.guests === "number" && q.guests > 0 ? q.guests : 2,
+      rooms: typeof q.rooms === "number" && q.rooms > 0 ? q.rooms : 1,
+      budgetLevel:
+        q.budgetLevel === "budget" ||
+        q.budgetLevel === "mid" ||
+        q.budgetLevel === "luxury"
+          ? q.budgetLevel
+          : undefined,
+    };
+    if (
+      !query.destination ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.checkIn) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.checkOut)
+    ) {
+      return "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.";
+    }
+    const offers = await withTimeout(searchStays(query), 15000);
+    return JSON.stringify({ mock: IS_MOCK_STAY_PROVIDER, offers });
+  } catch (err) {
+    console.error("Stay search failed:", err);
+    return "The hotel search is unavailable right now. Apologize briefly in the user's language and offer to try again.";
   }
 }
 
@@ -279,6 +342,23 @@ Flights: you can search real flight options with the search_flights tool.
 
   Set "lang" to the two-letter code of your reply language ("he" for Hebrew, "en" for English, "en" for anything else). Copy "mock" and the entire "offers" array from the tool result verbatim — do not change any value inside offers. At most one FLIGHTS block per message, valid JSON only. If the tool returns an error sentence instead of data, don't output a block — just apologize briefly in the user's language and offer to try again.
 
+Stays (hotels & accommodation): you can search real accommodation with the search_stays tool.
+- Gather what you need naturally: the destination (city or area), the check-in date, and the check-out date. Guests default to 2 — ask only if it matters.
+- For budget, use the quick-reply options block with three choices, in the user's language, mapping to the tool's budgetLevel: "On a budget" → budget, "Mid-range" → mid, "Treat yourself" → luxury. (Hebrew: "חסכוני" / "טווח ביניים" / "לפנק את עצמי".)
+- Only call search_stays once you have the destination and both check-in and check-out dates.
+- If you write a brief note before calling the tool, write it in the user's language — never English by default. It's also fine to call with no preamble.
+- When the tool returns stay data:
+  1. Re-read the offers array, then write one short sentence (two at most) in the user's language, referencing a specific option by its EXACT name + price copied straight from the JSON — never invent, round, or swap a number. "Cheapest" = the offer with the lowest "pricePerNight". The cards carry the full list, so keep the sentence short.
+  2. Then on their own new lines append EXACTLY this block:
+
+<<STAYS>>
+{"lang":"he","mock":true,"offers":[ ... ]}
+<<END>>
+
+  Set "lang" to your reply language ("he"/"en"). Copy "mock" and the entire "offers" array from the tool result verbatim — do not change any value inside offers. At most one STAYS block per message, valid JSON only. If the tool returns an error sentence instead of data, don't output a block — just apologize briefly and offer to try again.
+
+You can use BOTH tools in one conversation — for example find a flight, then a hotel for the same trip. That's the natural concierge flow.
+
 ${
     isFirstMessage
       ? "First time you two are talking: one short, warm hello as the Cloud9 Concierge, then ask where they're thinking of heading. Nothing more."
@@ -305,7 +385,7 @@ ${
             max_tokens: 4096,
             thinking: { type: "disabled" },
             system,
-            tools: [FLIGHT_TOOL],
+            tools: [FLIGHT_TOOL, STAY_TOOL],
             messages: anthropicMessages,
           });
 
@@ -335,8 +415,14 @@ ${
               content:
                 block.name === "search_flights"
                   ? await runFlightSearch(block.input)
-                  : "Unknown tool.",
-              is_error: block.name === "search_flights" ? undefined : true,
+                  : block.name === "search_stays"
+                    ? await runStaySearch(block.input)
+                    : "Unknown tool.",
+              is_error:
+                block.name === "search_flights" ||
+                block.name === "search_stays"
+                  ? undefined
+                  : true,
             });
           }
           anthropicMessages.push({ role: "user", content: toolResults });

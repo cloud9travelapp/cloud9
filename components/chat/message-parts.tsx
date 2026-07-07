@@ -26,6 +26,25 @@ export type FlightsPayload = {
   offers: FlightOfferView[];
 };
 
+export type StayOfferView = {
+  id: string;
+  name: string;
+  type: string;
+  area: string;
+  stars: number;
+  amenities: string[];
+  distanceKey: string;
+  distanceMinutes: number;
+  pricePerNight: number;
+  totalPrice: number;
+  currency: string;
+};
+export type StaysPayload = {
+  mock: boolean;
+  lang: Lang;
+  offers: StayOfferView[];
+};
+
 /** Accent circle with the white Cloud9 mark — the Concierge avatar. */
 export function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
   return (
@@ -160,12 +179,79 @@ function isoTime(iso: string): string {
   return m ? m[1] : iso;
 }
 
+const STAY_TYPE_LABELS: Record<Lang, Record<string, string>> = {
+  he: {
+    hotel: "מלון",
+    apartment: "דירה",
+    boutique: "מלון בוטיק",
+    hostel: "הוסטל",
+    resort: "ריזורט",
+  },
+  en: {
+    hotel: "Hotel",
+    apartment: "Apartment",
+    boutique: "Boutique hotel",
+    hostel: "Hostel",
+    resort: "Resort",
+  },
+};
+
+const AMENITY_LABELS: Record<Lang, Record<string, string>> = {
+  he: {
+    breakfast: "ארוחת בוקר",
+    pool: "בריכה",
+    wifi: "וויי-פיי",
+    seaview: "נוף לים",
+    spa: "ספא",
+    kitchen: "מטבחון",
+    parking: "חניה",
+    gym: "חדר כושר",
+    aircon: "מיזוג",
+    rooftop: "גג",
+  },
+  en: {
+    breakfast: "Breakfast",
+    pool: "Pool",
+    wifi: "Wi-Fi",
+    seaview: "Sea view",
+    spa: "Spa",
+    kitchen: "Kitchen",
+    parking: "Parking",
+    gym: "Gym",
+    aircon: "A/C",
+    rooftop: "Rooftop",
+  },
+};
+
+const DISTANCE_LANDMARKS: Record<Lang, Record<string, string>> = {
+  he: {
+    beach: "מהחוף",
+    center: "מהמרכז",
+    oldTown: "מהעיר העתיקה",
+    station: "מהתחנה",
+    park: "מהפארק",
+  },
+  en: {
+    beach: "beach",
+    center: "center",
+    oldTown: "old town",
+    station: "station",
+    park: "park",
+  },
+};
+
 const LABELS: Record<
   Lang,
   {
     duration: (min: number) => string;
     stops: (n: number) => string;
     mock: string;
+    perNight: string;
+    total: string;
+    stars: (n: number) => string;
+    stayType: (t: string) => string;
+    amenity: (k: string) => string;
+    distance: (key: string, minutes: number) => string;
   }
 > = {
   he: {
@@ -176,6 +262,13 @@ const LABELS: Record<
     },
     stops: (n) => (n <= 0 ? "ישיר" : n === 1 ? "עצירה אחת" : `${n} עצירות`),
     mock: "נתוני דמה",
+    perNight: "ללילה",
+    total: 'סה"כ',
+    stars: (n) => (n === 1 ? "כוכב אחד" : `${n} כוכבים`),
+    stayType: (t) => STAY_TYPE_LABELS.he[t] ?? t,
+    amenity: (k) => AMENITY_LABELS.he[k] ?? k,
+    distance: (key, minutes) =>
+      `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
   },
   en: {
     duration: (min) => {
@@ -185,6 +278,13 @@ const LABELS: Record<
     },
     stops: (n) => (n <= 0 ? "Direct" : n === 1 ? "1 stop" : `${n} stops`),
     mock: "Test data",
+    perNight: "per night",
+    total: "total",
+    stars: (n) => `${n}-star`,
+    stayType: (t) => STAY_TYPE_LABELS.en[t] ?? t,
+    amenity: (k) => AMENITY_LABELS.en[k] ?? k,
+    distance: (key, minutes) =>
+      `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
   },
 };
 
@@ -270,6 +370,86 @@ export function FlightCard({
           {L.mock}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function money(amount: number, currency: string): string {
+  return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
+}
+
+export function StayCard({
+  offer,
+  mock,
+  lang,
+}: {
+  offer: StayOfferView;
+  mock: boolean;
+  lang: Lang;
+}) {
+  const L = LABELS[lang];
+  return (
+    <div className="rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm">
+      {/* name + type (start) · price per night (end, LTR) */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div dir="auto" className="truncate text-sm font-semibold text-c-ink">
+            {offer.name}
+          </div>
+          <div dir="auto" className="truncate text-xs text-c-muted">
+            {L.stayType(offer.type)} · {offer.area}
+          </div>
+        </div>
+        <div className="flex-none text-end">
+          <div dir="ltr" className="text-lg font-bold text-c-accent tabular-nums">
+            {money(offer.pricePerNight, offer.currency)}
+          </div>
+          <div className="text-[11px] text-c-muted">{L.perNight}</div>
+        </div>
+      </div>
+
+      {/* stars + distance */}
+      <div dir="auto" className="mt-1.5 flex items-center gap-2 text-xs text-c-muted">
+        {offer.stars > 0 ? (
+          <span
+            className="flex-none text-c-accent"
+            aria-label={L.stars(offer.stars)}
+          >
+            {"★".repeat(offer.stars)}
+          </span>
+        ) : null}
+        <span className="truncate">
+          {L.distance(offer.distanceKey, offer.distanceMinutes)}
+        </span>
+      </div>
+
+      {/* amenity highlights */}
+      {offer.amenities.length ? (
+        <div dir="auto" className="mt-2 flex flex-wrap gap-1.5">
+          {offer.amenities.map((a) => (
+            <span
+              key={a}
+              className="rounded-full bg-c-accent-soft px-2 py-0.5 text-[11px] text-c-accent"
+            >
+              {L.amenity(a)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {/* total (LTR number) + mock tag */}
+      <div
+        dir="auto"
+        className="mt-2 flex items-center justify-between gap-3 text-[11px] text-c-muted"
+      >
+        <span>
+          {L.total}:{" "}
+          <span dir="ltr" className="tabular-nums">
+            {money(offer.totalPrice, offer.currency)}
+          </span>
+        </span>
+        {mock ? <span>{L.mock}</span> : null}
+      </div>
     </div>
   );
 }
