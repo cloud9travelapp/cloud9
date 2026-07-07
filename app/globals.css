@@ -270,14 +270,14 @@ body {
   /* line 1: a solid caret rides the type, then vanishes (hands off) */
   h1[data-typewriter="on"] .tw-row:nth-of-type(1) .tw-line {
     animation:
-      tw-type 0.7s ease-out forwards,
-      tw-caret-lead 0.72s step-end forwards;
+      tw-type 1.2s ease-out forwards,
+      tw-caret-lead 1.22s step-end forwards;
   }
   /* line 2: caret arrives with the type, then rests + blinks at the period */
   h1[data-typewriter="on"] .tw-row:nth-of-type(2) .tw-line {
     animation:
-      tw-type 0.7s ease-out 0.66s backwards,
-      tw-caret 0.9s step-end 0.66s infinite;
+      tw-type 1.2s ease-out 1.15s backwards,
+      tw-caret 0.9s step-end 1.15s infinite;
   }
 }
 @keyframes tw-type {
