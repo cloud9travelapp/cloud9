@@ -26,23 +26,25 @@ export default function PhaseShowcase() {
           onClick={() => preview(p.id)}
           className="group rounded-2xl p-1 text-center outline-none transition-transform hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-c-accent/40"
         >
-          {/* the chip carries its own phase palette */}
+          {/* the chip carries its own phase palette; the mist colour dominates
+             so each phase reads clearly (sunrise yellow-gold vs sunset coral) */}
           <span
             data-phase={p.id}
             className="relative block h-24 overflow-hidden rounded-2xl border border-c-border shadow-sm"
             style={{
-              background: "linear-gradient(to bottom, var(--c-bg-1), var(--c-bg-2))",
+              background:
+                "linear-gradient(150deg, var(--c-bg-1) 0%, var(--c-bg-2) 32%, var(--c-mist) 118%)",
             }}
           >
-            {/* a soft blob of the phase mist */}
+            {/* a concentrated bloom of the phase mist, reinforcing the hue */}
             <span
               aria-hidden="true"
-              className="absolute -right-4 -top-4 h-16 w-16 rounded-full blur-lg"
-              style={{ background: "var(--c-mist)", opacity: 0.7 }}
+              className="absolute -bottom-5 -right-5 h-20 w-20 rounded-full blur-md"
+              style={{ background: "var(--c-mist)" }}
             />
             <span
               aria-hidden="true"
-              className="absolute bottom-3 left-3 h-3 w-3 rounded-full"
+              className="absolute left-3 top-3 h-3 w-3 rounded-full"
               style={{ background: "var(--c-accent)" }}
             />
           </span>
