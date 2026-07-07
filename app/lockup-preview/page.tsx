@@ -15,7 +15,7 @@ function RatioRow({ label, fontSize }: { label: string; fontSize: string }) {
       <div className="flex flex-wrap items-center gap-x-16 gap-y-10">
         {RATIOS.map((r) => (
           <div key={r} className="flex flex-col items-center gap-2">
-            <Lockup orientation="horizontal" markScale={r} style={{ fontSize }} />
+            <Lockup orientation="horizontal" markScale={r} float style={{ fontSize }} />
             <span className="text-[10px] text-c-muted">mark {r}em</span>
           </div>
         ))}
@@ -62,7 +62,7 @@ export default function LockupPreview() {
         <div className="mb-6 text-xs font-semibold uppercase tracking-wider text-c-muted">
           Stacked — reference (og/splash), unchanged
         </div>
-        <Lockup orientation="stacked" style={{ fontSize: "56px" }} />
+        <Lockup orientation="stacked" float style={{ fontSize: "56px" }} />
       </div>
     </div>
   );

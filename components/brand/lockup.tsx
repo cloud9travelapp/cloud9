@@ -17,16 +17,21 @@ export function Lockup({
   className,
   style,
   markScale,
+  float = false,
 }: {
   orientation?: "horizontal" | "stacked";
   className?: string;
   style?: React.CSSProperties;
-  /** Mark height in em, relative to the wordmark. Defaults: 1.5 horizontal,
+  /** Mark height in em, relative to the wordmark. Defaults: 1.8 horizontal,
    *  1.85 stacked. */
   markScale?: number;
+  /** Living treatment (web only): the cloud drifts gently and its colour is the
+   *  phase accent. Gated under prefers-reduced-motion. Leave off for exported
+   *  assets (favicon/og). */
+  float?: boolean;
 }) {
   const horizontal = orientation === "horizontal";
-  const scale = markScale ?? (horizontal ? 1.5 : 1.85);
+  const scale = markScale ?? (horizontal ? 1.8 : 1.85);
   return (
     <span
       style={style}
@@ -39,7 +44,7 @@ export function Lockup({
       )}
     >
       <CloudMarkClassic
-        className="flex-none text-c-accent"
+        className={cn("flex-none text-c-accent", float && "logo-float")}
         style={{ width: `${scale}em`, height: `${scale}em` }}
       />
       <span className="font-extrabold tracking-tight text-c-ink">Cloud9</span>

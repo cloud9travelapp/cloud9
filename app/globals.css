@@ -412,6 +412,23 @@ body {
   }
 }
 
+/* Living logo — the cloud mark drifts gently, cloud-like (web only; its colour
+   is bound to the phase accent via the token). Static under reduced motion. */
+@keyframes logo-float {
+  0%,
+  100% {
+    transform: translateY(0.09em);
+  }
+  50% {
+    transform: translateY(-0.1em);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .logo-float {
+    animation: logo-float 5.5s ease-in-out infinite;
+  }
+}
+
 /* Comprehensive fallback: honour reduced motion everywhere, even for any
    hover/transition not gated individually. */
 @media (prefers-reduced-motion: reduce) {
