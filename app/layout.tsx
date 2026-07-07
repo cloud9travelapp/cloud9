@@ -21,10 +21,30 @@ const bodyFace = Heebo({
   display: "swap",
 });
 
+const SITE_DESCRIPTION =
+  "Plan less, wander more. Cloud9 is your AI travel concierge for trips that plan themselves.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : "http://localhost:3000"),
+  ),
   title: "Cloud9 — AI Travel Concierge",
-  description:
-    "Plan less, wander more. Cloud9 is your AI travel concierge for trips that plan themselves.",
+  description: SITE_DESCRIPTION,
+  // og:image / twitter:image are supplied automatically by app/opengraph-image.tsx
+  openGraph: {
+    title: "Cloud9 — AI Travel Concierge",
+    description: SITE_DESCRIPTION,
+    type: "website",
+    siteName: "Cloud9",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cloud9 — AI Travel Concierge",
+    description: SITE_DESCRIPTION,
+  },
 };
 
 // Set the sky phase from the user's local time BEFORE first paint, so the
