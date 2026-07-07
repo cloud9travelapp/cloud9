@@ -1,6 +1,6 @@
 "use client";
 
-import { CLOUD_MARKS } from "@/components/brand/cloud-marks";
+import { REFINED_MARKS } from "@/components/brand/cloud-marks";
 
 // TEMP — Step 1 mark variations for review. Deleted at the end of the brand
 // mini-project.
@@ -19,7 +19,7 @@ export default function MarkPreview() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold text-c-ink">
-        Cloud9 mark — 4 options
+        Cloud9 mark — Classic + 3 signatures
       </h1>
       <p className="mt-2 text-c-muted">
         Each shown at 16 / 48 / 200px, in ink and in the phase accent. Switch the
@@ -41,14 +41,14 @@ export default function MarkPreview() {
       </div>
 
       <div className="mt-10 flex flex-col gap-8">
-        {CLOUD_MARKS.map(({ id, name, note, Mark }) => (
+        {REFINED_MARKS.map(({ id, name, note, Mark }) => (
           <div
             key={id}
             className="rounded-3xl border border-c-border bg-c-surface/60 p-6 backdrop-blur"
           >
             <div className="flex items-baseline gap-3">
               <span className="font-display text-xl font-bold text-c-ink">
-                {id}. {name}
+                {name}
               </span>
               <span className="text-sm text-c-muted">{note}</span>
             </div>
