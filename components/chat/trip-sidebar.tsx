@@ -4,8 +4,10 @@ import Link from "next/link";
 
 export type Trip = { id: string; name: string; created_at: string };
 
+// Dates follow the interface language (English), not the browser/OS locale, so
+// the sidebar never mixes English trip names with e.g. Hebrew dates.
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });

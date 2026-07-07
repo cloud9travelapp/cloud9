@@ -14,6 +14,15 @@ import {
   type FlightsPayload,
   type Lang,
 } from "./message-parts";
+import HeroDithering from "@/components/landing/hero-dithering";
+
+// Starter prompts shown on the empty state (interface language: English).
+const INSPIRATION = [
+  "Romantic weekend in Europe",
+  "Family trip to Japan",
+  "A week in the Greek islands",
+  "Surprise me ✨",
+];
 
 type Message = {
   role: "user" | "assistant";
@@ -265,19 +274,30 @@ export default function ChatClient({
         <span className="w-9" aria-hidden="true" />
       </header>
 
-      {/* Messages — the app-wide sky (SkyClouds + phase gradient) shows through */}
+      {/* Messages — the app-wide sky (SkyClouds + phase gradient) shows through.
+         On the empty state the living Dithering mist is present too, like the
+         landing hero. */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 py-6">
+        {isEmpty ? <HeroDithering /> : null}
         <div className="relative z-[1] mx-auto flex max-w-2xl flex-col gap-5">
           {isEmpty ? (
             <div className="mt-24 flex flex-col items-center text-center">
               <CloudMark size="h-16 w-16" />
-              <h1 className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink">
+              <h1
+                dir="auto"
+                className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink"
+              >
                 Where to next, <bdi>{firstName}</bdi>?
               </h1>
               <p className="mt-2 max-w-sm text-c-muted">
                 Tell the Concierge what you&apos;re dreaming of. We&apos;ll take
                 it from a spark to a plan.
               </p>
+              <QuickReplyPills
+                options={INSPIRATION}
+                onSelect={(t) => void send(t)}
+                className="mt-6 justify-center"
+              />
             </div>
           ) : (
             messages.map((m, i) => {

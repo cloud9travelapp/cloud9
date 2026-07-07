@@ -123,14 +123,16 @@ export function QuickReplyPills({
   options,
   onSelect,
   highlight,
+  className = "",
 }: {
   options: string[];
   onSelect?: (opt: string) => void;
   highlight?: string;
+  className?: string;
 }) {
   const interactive = typeof onSelect === "function";
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className={`mt-2 flex flex-wrap gap-2 ${className}`}>
       {options.map((opt, oi) => {
         const pressed = opt === highlight;
         return (
