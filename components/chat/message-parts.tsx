@@ -1,7 +1,10 @@
+"use client";
+
 // Presentational chat pieces shared by the real chat (ChatClient) and the
 // landing's scripted demo, so the demo can never drift from the product.
-// Pure view only — no parsing/streaming logic lives here.
+// View + local UI state only (e.g. a card's expand toggle) — no parsing.
 
+import { useState } from "react";
 import { CloudMarkClassic } from "@/components/brand/cloud-marks";
 
 export type FlightSegmentView = {
@@ -246,6 +249,7 @@ const LABELS: Record<
     distance: (key: string, minutes: number) => string;
     select: string;
     selected: string; // prefix for the structured choice message
+    layover: (duration: string, hub: string) => string;
   }
 > = {
   he: {
@@ -265,6 +269,7 @@ const LABELS: Record<
       `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
     select: "בחר",
     selected: "בחרתי",
+    layover: (dur, hub) => `עצירה ${dur} ב-${hub}`,
   },
   en: {
     duration: (min) => {
@@ -283,6 +288,7 @@ const LABELS: Record<
       `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
     select: "Select",
     selected: "Selected",
+    layover: (dur, hub) => `${dur} layover in ${hub}`,
   },
 };
 
@@ -324,6 +330,30 @@ function PlaneIcon() {
   );
 }
 
+function minutesBetween(a: string, b: string): number {
+  const t1 = Date.parse(a);
+  const t2 = Date.parse(b);
+  if (Number.isNaN(t1) || Number.isNaN(t2)) return 0;
+  return Math.max(0, Math.round((t2 - t1) / 60000));
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 export function FlightCard({
   offer,
   mock,
@@ -343,9 +373,15 @@ export function FlightCard({
       ? `$${offer.price}`
       : `${offer.price} ${offer.currency}`;
   const durationDir = lang === "he" ? "rtl" : "ltr";
+  const [expanded, setExpanded] = useState(false);
+  // hubs = the stop airports (each leg's destination except the final one)
+  const hubs = offer.segments.slice(0, -1).map((s) => s.destination);
 
   return (
-    <div className="rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm">
+    <div
+      className="cursor-pointer select-none rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm"
+      onClick={() => setExpanded((e) => !e)}
+      aria-expanded={expanded}>
       {/* airline (left) + price (right) */}
       <div dir="ltr" className="flex items-center justify-between gap-3">
         <span dir="auto" className="truncate text-sm font-semibold text-c-ink">
@@ -388,6 +424,54 @@ export function FlightCard({
           <span className="text-xs text-c-muted">{last.destination}</span>
         </div>
       </div>
+
+      {/* connection indicator (stops only) + expand affordance */}
+      <div
+        dir="auto"
+        className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-c-muted"
+      >
+        {hubs.length ? (
+          <span>
+            {lang === "he" ? "דרך" : "via"}{" "}
+            <span dir="ltr" className="tabular-nums">
+              {hubs.join(", ")}
+            </span>
+          </span>
+        ) : null}
+        <Chevron open={expanded} />
+      </div>
+
+      {/* expanded per-leg detail: each leg's times + route, layovers between */}
+      {expanded ? (
+        <div dir="ltr" className="mt-2 space-y-2 border-t border-c-border pt-2">
+          {offer.segments.map((seg, i) => (
+            <div key={i}>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-medium text-c-ink tabular-nums">
+                  {isoTime(seg.departTime)} · {seg.origin}
+                </span>
+                <span className="flex-1 border-t border-dashed border-c-accent/40" />
+                <span className="font-medium text-c-ink tabular-nums">
+                  {isoTime(seg.arriveTime)} · {seg.destination}
+                </span>
+              </div>
+              {i < offer.segments.length - 1 ? (
+                <div dir="auto" className="mt-1 text-center text-[11px] text-c-muted">
+                  {L.layover(
+                    L.duration(
+                      minutesBetween(
+                        seg.arriveTime,
+                        offer.segments[i + 1].departTime,
+                      ),
+                    ),
+                    seg.destination,
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {/* mock-data tag (per language, only while mock) */}
       {mock ? (
