@@ -384,3 +384,43 @@ body {
     transition: none;
   }
 }
+
+/* ── Motion polish ───────────────────────────────────────────────────────
+   Calm "typing" dots — a gentle opacity pulse, never a bounce. */
+.typing-dot {
+  opacity: 0.3;
+}
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .typing-dot {
+    animation: dot-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+/* Chat messages rise in softly as they arrive (base state stays visible). */
+@media (prefers-reduced-motion: no-preference) {
+  .msg-enter {
+    animation: demo-in 0.3s ease-out;
+  }
+}
+
+/* Comprehensive fallback: honour reduced motion everywhere, even for any
+   hover/transition not gated individually. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

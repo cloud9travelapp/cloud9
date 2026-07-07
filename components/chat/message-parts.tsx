@@ -103,13 +103,24 @@ export function UserBubble({ content }: { content: string }) {
   );
 }
 
-/** The "thinking" dots shown in an empty assistant bubble. */
+/** The "thinking" dots shown in an empty assistant bubble — a calm opacity
+ *  pulse (no bounce). Static under reduced motion. */
 export function LoadingDots() {
   return (
-    <span className="inline-flex gap-1 py-1">
-      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/50 [animation-delay:-0.2s]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent/75 [animation-delay:-0.1s]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-c-accent" />
+    <span
+      className="inline-flex gap-1 py-1"
+      role="status"
+      aria-label="Typing…"
+    >
+      <span className="typing-dot h-2 w-2 rounded-full bg-c-accent" />
+      <span
+        className="typing-dot h-2 w-2 rounded-full bg-c-accent"
+        style={{ animationDelay: "0.2s" }}
+      />
+      <span
+        className="typing-dot h-2 w-2 rounded-full bg-c-accent"
+        style={{ animationDelay: "0.4s" }}
+      />
     </span>
   );
 }

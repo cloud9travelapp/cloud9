@@ -303,7 +303,7 @@ export default function ChatClient({
             messages.map((m, i) => {
               if (m.role === "user") {
                 return (
-                  <div key={i} className="flex flex-col items-end">
+                  <div key={i} className="msg-enter flex flex-col items-end">
                     <UserBubble content={m.content} />
                     <span className="mt-1.5 px-1 text-[11px] text-c-muted">
                       {formatTime(m.created_at)}
@@ -325,7 +325,7 @@ export default function ChatClient({
               }
               const isLast = i === messages.length - 1;
               return (
-                <div key={i} className="flex flex-col items-start pt-2">
+                <div key={i} className="msg-enter flex flex-col items-start pt-2">
                   <CloudBubble>
                     {text ? (
                       <span className="whitespace-pre-wrap">{text}</span>
