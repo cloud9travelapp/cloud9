@@ -244,6 +244,8 @@ const LABELS: Record<
     stayType: (t: string) => string;
     amenity: (k: string) => string;
     distance: (key: string, minutes: number) => string;
+    select: string;
+    selected: string; // prefix for the structured choice message
   }
 > = {
   he: {
@@ -261,6 +263,8 @@ const LABELS: Record<
     amenity: (k) => AMENITY_LABELS.he[k] ?? k,
     distance: (key, minutes) =>
       `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
+    select: "בחר",
+    selected: "בחרתי",
   },
   en: {
     duration: (min) => {
@@ -277,8 +281,35 @@ const LABELS: Record<
     amenity: (k) => AMENITY_LABELS.en[k] ?? k,
     distance: (key, minutes) =>
       `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
+    select: "Select",
+    selected: "Selected",
   },
 };
+
+/** Shared "Select" action for any offer card — posts a structured, human-
+ *  readable choice as the user's message. Future card types (dining, transport)
+ *  reuse this: add an `onSelect` prop and a localized summary, render <CardSelect>.
+ *  stopPropagation keeps it from toggling an expandable card body. */
+function CardSelect({
+  label,
+  onSelect,
+}: {
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className="mt-2 block w-fit rounded-full bg-c-accent px-4 py-1.5 text-xs font-semibold text-c-on-accent transition-opacity hover:opacity-90"
+    >
+      {label}
+    </button>
+  );
+}
 
 function PlaneIcon() {
   return (
@@ -297,10 +328,12 @@ export function FlightCard({
   offer,
   mock,
   lang,
+  onSelect,
 }: {
   offer: FlightOfferView;
   mock: boolean;
   lang: Lang;
+  onSelect?: (choice: string) => void;
 }) {
   const L = LABELS[lang];
   const first = offer.segments[0];
@@ -362,6 +395,17 @@ export function FlightCard({
           {L.mock}
         </div>
       ) : null}
+
+      {onSelect ? (
+        <CardSelect
+          label={L.select}
+          onSelect={() =>
+            onSelect(
+              `${L.selected}: ${offer.airlineName}, ${first.origin}→${last.destination}, ${L.stops(offer.stops)}, ${first.departTime.slice(0, 10)}, ${price}`,
+            )
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -374,10 +418,12 @@ export function StayCard({
   offer,
   mock,
   lang,
+  onSelect,
 }: {
   offer: StayOfferView;
   mock: boolean;
   lang: Lang;
+  onSelect?: (choice: string) => void;
 }) {
   const L = LABELS[lang];
   return (
@@ -442,6 +488,19 @@ export function StayCard({
         </span>
         {mock ? <span>{L.mock}</span> : null}
       </div>
+
+      {onSelect ? (
+        <CardSelect
+          label={L.select}
+          onSelect={() =>
+            onSelect(
+              `${L.selected}: ${offer.name}, ${offer.area}${
+                offer.stars > 0 ? `, ${L.stars(offer.stars)}` : ""
+              }, ${money(offer.pricePerNight, offer.currency)} ${L.perNight}`,
+            )
+          }
+        />
+      ) : null}
     </div>
   );
 }

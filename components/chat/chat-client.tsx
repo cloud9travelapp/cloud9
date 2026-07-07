@@ -411,6 +411,7 @@ export default function ChatClient({
                           offer={offer}
                           mock={flights.mock}
                           lang={flights.lang}
+                          onSelect={(s) => void send(s)}
                         />
                       ))}
                     </div>
@@ -423,6 +424,7 @@ export default function ChatClient({
                           offer={offer}
                           mock={stays.mock}
                           lang={stays.lang}
+                          onSelect={(s) => void send(s)}
                         />
                       ))}
                     </div>
