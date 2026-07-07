@@ -4,6 +4,7 @@ import HeroDithering from "@/components/landing/hero-dithering";
 import PhaseTypewriter from "@/components/landing/phase-typewriter";
 import ChatDemo from "@/components/landing/chat-demo";
 import PhaseShowcase from "@/components/landing/phase-showcase";
+import { Lockup } from "@/components/brand/lockup";
 
 const capabilities = [
   {
@@ -61,25 +62,10 @@ function Wordmark() {
   return (
     <Link
       href="/"
-      className="group flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40"
+      aria-label="Cloud9 home"
+      className="group rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40"
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-c-accent text-c-on-accent">
-        <svg
-          viewBox="0 0 24 24"
-          className="h-[18px] w-[18px]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
-        </svg>
-      </span>
-      <span className="font-display text-lg font-extrabold tracking-tight text-c-ink">
-        Cloud9
-      </span>
+      <Lockup float className="text-lg" />
     </Link>
   );
 }

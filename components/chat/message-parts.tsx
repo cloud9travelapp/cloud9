@@ -2,6 +2,8 @@
 // landing's scripted demo, so the demo can never drift from the product.
 // Pure view only — no parsing/streaming logic lives here.
 
+import { CloudMarkClassic } from "@/components/brand/cloud-marks";
+
 export type FlightSegmentView = {
   origin: string;
   destination: string;
@@ -24,30 +26,13 @@ export type FlightsPayload = {
   offers: FlightOfferView[];
 };
 
-function CloudIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
-    </svg>
-  );
-}
-
-/** Deep-sky circle with a white cloud — the Concierge mark. */
+/** Accent circle with the white Cloud9 mark — the Concierge avatar. */
 export function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
   return (
     <span
       className={`flex ${size} flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent`}
     >
-      <CloudIcon className="h-1/2 w-1/2" />
+      <CloudMarkClassic className="h-1/2 w-1/2" />
     </span>
   );
 }

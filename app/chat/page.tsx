@@ -2,6 +2,7 @@ import { auth, signIn } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import ChatShell from "@/components/chat/chat-shell";
 import type { Trip } from "@/components/chat/trip-sidebar";
+import { CloudMarkClassic } from "@/components/brand/cloud-marks";
 
 type Message = {
   role: "user" | "assistant";
@@ -21,18 +22,7 @@ export default async function ChatPage({
     return (
       <div dir="rtl" className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-7 w-7"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.9" />
-          </svg>
+          <CloudMarkClassic className="h-7 w-7" />
         </span>
         <h1 className="font-display mt-6 text-3xl font-extrabold tracking-tight text-c-ink">
           Sign in to start planning
