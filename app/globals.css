@@ -385,23 +385,21 @@ body {
   }
 }
 
-/* ── Motion polish ───────────────────────────────────────────────────────
-   Calm "typing" dots — a gentle opacity pulse, never a bounce. */
-.typing-dot {
-  opacity: 0.3;
-}
-@keyframes dot-pulse {
+/* ── Thinking loader ─────────────────────────────────────────────────────
+   The cloud mark breathes gently while the concierge thinks. Static under
+   reduced motion. */
+@keyframes logo-breathe {
   0%,
   100% {
-    opacity: 0.3;
+    transform: scale(1);
   }
   50% {
-    opacity: 1;
+    transform: scale(1.09);
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .typing-dot {
-    animation: dot-pulse 1.4s ease-in-out infinite;
+  .logo-breathe {
+    animation: logo-breathe 2.4s ease-in-out infinite;
   }
 }
 

@@ -107,24 +107,16 @@ export function UserBubble({ content }: { content: string }) {
   );
 }
 
-/** The "thinking" dots shown in an empty assistant bubble — a calm opacity
- *  pulse (no bounce). Static under reduced motion. */
+/** The "thinking" indicator shown in an empty assistant bubble — the cloud mark
+ *  breathing gently. Static mark under reduced motion. */
 export function LoadingDots() {
   return (
     <span
-      className="inline-flex gap-1 py-1"
+      className="inline-flex py-1 text-c-accent"
       role="status"
-      aria-label="Typing…"
+      aria-label="Thinking…"
     >
-      <span className="typing-dot h-2 w-2 rounded-full bg-c-accent" />
-      <span
-        className="typing-dot h-2 w-2 rounded-full bg-c-accent"
-        style={{ animationDelay: "0.2s" }}
-      />
-      <span
-        className="typing-dot h-2 w-2 rounded-full bg-c-accent"
-        style={{ animationDelay: "0.4s" }}
-      />
+      <CloudMarkClassic className="logo-breathe h-6 w-6" />
     </span>
   );
 }
