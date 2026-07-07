@@ -29,8 +29,9 @@
   --c-bg-2: #ffffff;
   --c-glow: #d3e9ff;
   --c-cloud: #ffffff;
-  --c-mist: #0f74b8;
-  --c-mist-opacity: 0.4;
+  --c-mist: #8fc0ea;
+  --c-mist-opacity: 0.22;
+  --c-mist-blend: normal;
   --c-surface: #ffffff;
   --c-ink: #0f172a;
   --c-muted: #566274;
@@ -47,8 +48,9 @@
   --c-bg-2: #fffaf5;
   --c-glow: #ffe6d3;
   --c-cloud: #fff2ea;
-  --c-mist: #f6bf3a;
-  --c-mist-opacity: 0.42;
+  --c-mist: #f8cf63;
+  --c-mist-opacity: 0.38;
+  --c-mist-blend: normal;
   --c-surface: #fff7f2;
   --c-ink: #42291f;
   --c-muted: #7d5d50;
@@ -65,7 +67,8 @@
   --c-glow: #dcecfe;
   --c-cloud: #ffffff;
   --c-mist: #4f9fe6;
-  --c-mist-opacity: 0.4;
+  --c-mist-opacity: 0.46;
+  --c-mist-blend: normal;
   --c-surface: #ffffff;
   --c-ink: #17293f;
   --c-muted: #52657f;
@@ -81,8 +84,9 @@
   --c-bg-2: #fff6ef;
   --c-glow: #ffdcc6;
   --c-cloud: #ffe9dc;
-  --c-mist: #e85c26;
-  --c-mist-opacity: 0.4;
+  --c-mist: #e8663a;
+  --c-mist-opacity: 0.34;
+  --c-mist-blend: normal;
   --c-surface: #fff6ee;
   --c-ink: #3d2416;
   --c-muted: #866052;
@@ -99,8 +103,9 @@
   --c-bg-2: #0d2138;
   --c-glow: #16375f;
   --c-cloud: #14304f;
-  --c-mist: #f6c98a;
-  --c-mist-opacity: 0.22;
+  --c-mist: #ffd39a;
+  --c-mist-opacity: 0.34;
+  --c-mist-blend: screen;
   --c-surface: #16273f;
   --c-ink: #eaf0fa;
   --c-muted: #9fb0c9;

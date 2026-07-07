@@ -186,8 +186,9 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* Hero — living sky: phase gradient + SkyClouds + the Dithering mist */}
-      <section className="relative isolate overflow-hidden">
+      {/* Hero — living sky: phase gradient + SkyClouds + the Dithering mist.
+         No `isolate`: the mist blends (screen on night) against the sky behind. */}
+      <section className="relative overflow-hidden">
         <HeroDithering />
         <div className="relative z-10 mx-auto max-w-3xl px-6 pb-24 pt-24 text-center sm:pt-32">
           <span className="inline-flex items-center gap-2 rounded-full border border-c-border bg-c-surface/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-c-accent backdrop-blur">

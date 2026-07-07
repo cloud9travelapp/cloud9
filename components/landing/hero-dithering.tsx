@@ -8,14 +8,18 @@ const Dithering = lazy(() =>
   import("@paper-design/shaders-react").then((m) => ({ default: m.Dithering })),
 );
 
-/** Read the phase mist colour + opacity (its own tokens, separate from the UI
- *  accent) so the mist can be a bright atmospheric hue while accents stay
- *  readable. */
-function readMist(): { color: string; opacity: number } {
+type Mist = { color: string; opacity: number; blend: string };
+
+/** Read the phase mist colour + opacity + blend mode (its own tokens, separate
+ *  from the UI accent) so the mist can be a bright atmospheric hue while accents
+ *  stay readable. The blend mode matters on dark bases: `screen` lets the warm
+ *  night mist glow additively over the navy instead of muddying it. */
+function readMist(): Mist {
   const cs = getComputedStyle(document.documentElement);
-  const color = cs.getPropertyValue("--c-mist").trim() || "#0f74b8";
-  const opacity = parseFloat(cs.getPropertyValue("--c-mist-opacity")) || 0.4;
-  return { color, opacity };
+  const color = cs.getPropertyValue("--c-mist").trim() || "#8fc0ea";
+  const opacity = parseFloat(cs.getPropertyValue("--c-mist-opacity")) || 0.3;
+  const blend = cs.getPropertyValue("--c-mist-blend").trim() || "normal";
+  return { color, opacity, blend };
 }
 
 /**
@@ -25,9 +29,10 @@ function readMist(): { color: string; opacity: number } {
  * so it lives with the clock. Omitted entirely under prefers-reduced-motion.
  */
 export default function HeroDithering() {
-  const [mist, setMist] = useState<{ color: string; opacity: number }>({
-    color: "#0f74b8",
-    opacity: 0.4,
+  const [mist, setMist] = useState<Mist>({
+    color: "#8fc0ea",
+    opacity: 0.22,
+    blend: "normal",
   });
   const [enabled, setEnabled] = useState(false);
 
@@ -60,7 +65,11 @@ export default function HeroDithering() {
     <div
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
-      style={{ opacity: mist.opacity, transition: "opacity 900ms ease" }}
+      style={{
+        opacity: mist.opacity,
+        mixBlendMode: mist.blend as React.CSSProperties["mixBlendMode"],
+        transition: "opacity 900ms ease",
+      }}
     >
       <Suspense fallback={null}>
         <Dithering
