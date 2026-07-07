@@ -22,9 +22,11 @@
    the phase identity. --c-mist is kept SEPARATE from --c-accent so the mist can
    be a bright atmospheric colour while the accent stays readable on surfaces. */
 
-/* Midday is the default (also the SSR value before the phase script runs). */
+/* Midday is the default (also the SSR value before the phase script runs).
+   The [data-phase] selectors match both <html> AND any element (e.g. the
+   showcase swatches), so a swatch can preview its own palette in isolation. */
 :root,
-:root[data-phase="midday"] {
+[data-phase="midday"] {
   --c-bg-1: #eaf2fb;
   --c-bg-2: #ffffff;
   --c-glow: #d3e9ff;
@@ -43,7 +45,7 @@
 
 /* Sunrise (05–08) — near-white warm base; mist is clear YELLOW-GOLD dawn light
    (deliberately distinct from sunset's coral). */
-:root[data-phase="sunrise"] {
+[data-phase="sunrise"] {
   --c-bg-1: #fdeee7;
   --c-bg-2: #fffaf5;
   --c-glow: #ffe6d3;
@@ -61,7 +63,7 @@
 }
 
 /* Morning (08–11) — near-white cool base; soft sky-blue mist. */
-:root[data-phase="morning"] {
+[data-phase="morning"] {
   --c-bg-1: #eaf3fd;
   --c-bg-2: #ffffff;
   --c-glow: #dcecfe;
@@ -79,7 +81,7 @@
 }
 
 /* Sunset (16–19) — near-white warm base; mist is DEEP CORAL-ORANGE golden hour. */
-:root[data-phase="sunset"] {
+[data-phase="sunset"] {
   --c-bg-1: #fbe9dd;
   --c-bg-2: #fff6ef;
   --c-glow: #ffdcc6;
@@ -98,7 +100,7 @@
 
 /* Night (19–05) — deep calm blues, dark surfaces; mist is a soft warm amber
    moonlight glow at low opacity (not a stain over the navy). */
-:root[data-phase="night"] {
+[data-phase="night"] {
   --c-bg-1: #061325;
   --c-bg-2: #0d2138;
   --c-glow: #16375f;

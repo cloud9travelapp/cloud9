@@ -3,6 +3,7 @@ import { auth, signIn, signOut } from "@/auth";
 import HeroDithering from "@/components/landing/hero-dithering";
 import PhaseTypewriter from "@/components/landing/phase-typewriter";
 import ChatDemo from "@/components/landing/chat-demo";
+import PhaseShowcase from "@/components/landing/phase-showcase";
 
 const capabilities = [
   {
@@ -296,6 +297,40 @@ export default async function Home() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Time-of-day showcase */}
+      <section className="mx-auto max-w-4xl px-6 pb-24 text-center">
+        <h2 className="font-display text-3xl font-bold tracking-tight text-c-ink sm:text-4xl">
+          An app that lives with your day
+        </h2>
+        <p className="mx-auto mt-3 max-w-lg text-lg text-c-muted">
+          Cloud9&apos;s sky shifts from dawn to midnight with your local time.
+          Tap a moment to try it on.
+        </p>
+        <div className="mt-10">
+          <PhaseShowcase />
+        </div>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="mx-auto max-w-3xl px-6 pb-28 text-center">
+        <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-c-ink sm:text-5xl">
+          Your next trip is one message away.
+        </h2>
+        <p className="mx-auto mt-4 max-w-md text-lg text-c-muted">
+          No forms, no twenty tabs. Just tell Cloud9 where you&apos;re dreaming
+          of — and go.
+        </p>
+        <div className="mt-9">
+          <Link
+            href="/chat"
+            className="inline-flex items-center gap-2 rounded-full bg-c-accent px-9 py-4 text-lg font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
+          >
+            Start planning
+            <span aria-hidden="true">→</span>
+          </Link>
         </div>
       </section>
 
