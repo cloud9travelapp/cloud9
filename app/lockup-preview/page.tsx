@@ -4,28 +4,21 @@ import { Lockup } from "@/components/brand/lockup";
 
 // TEMP — Step 2 lockup review. Deleted at the end of the brand mini-project.
 const PHASES = ["sunrise", "morning", "midday", "sunset", "night"];
+const RATIOS = [1.5, 1.8, 2.1];
 
-function Row({
-  label,
-  fontSize,
-}: {
-  label: string;
-  fontSize: string;
-}) {
+function RatioRow({ label, fontSize }: { label: string; fontSize: string }) {
   return (
     <div className="rounded-3xl border border-c-border bg-c-surface/60 p-8 backdrop-blur">
       <div className="mb-6 text-xs font-semibold uppercase tracking-wider text-c-muted">
         {label}
       </div>
       <div className="flex flex-wrap items-center gap-x-16 gap-y-10">
-        <div className="flex flex-col items-center gap-2">
-          <Lockup orientation="horizontal" style={{ fontSize }} />
-          <span className="text-[10px] text-c-muted">mark left of text</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Lockup orientation="stacked" style={{ fontSize }} />
-          <span className="text-[10px] text-c-muted">mark above text</span>
-        </div>
+        {RATIOS.map((r) => (
+          <div key={r} className="flex flex-col items-center gap-2">
+            <Lockup orientation="horizontal" markScale={r} style={{ fontSize }} />
+            <span className="text-[10px] text-c-muted">mark {r}em</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -39,11 +32,11 @@ export default function LockupPreview() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold text-c-ink">
-        Cloud9 lockup — 2 arrangements
+        Horizontal lockup — pick the balance
       </h1>
       <p className="mt-2 text-c-muted">
-        Classic mark + &ldquo;Cloud9&rdquo; in Suez One. Shown at header size and
-        og:image size, in both arrangements. Switch phase to see the accent mark.
+        Mark frame tightened (fills its box now). Three mark-to-type ratios,
+        side by side. Switch phase to see the accent mark.
       </p>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -60,8 +53,16 @@ export default function LockupPreview() {
       </div>
 
       <div className="mt-10 flex flex-col gap-8">
-        <Row label="Header size (~20px type)" fontSize="20px" />
-        <Row label="og:image size (~72px type)" fontSize="72px" />
+        <RatioRow label="Header size (~20px type)" fontSize="20px" />
+        <RatioRow label="Larger (~40px type)" fontSize="40px" />
+      </div>
+
+      {/* stacked reference (already chosen for og/splash) */}
+      <div className="mt-8 rounded-3xl border border-c-border bg-c-surface/60 p-8 backdrop-blur">
+        <div className="mb-6 text-xs font-semibold uppercase tracking-wider text-c-muted">
+          Stacked — reference (og/splash), unchanged
+        </div>
+        <Lockup orientation="stacked" style={{ fontSize: "56px" }} />
       </div>
     </div>
   );

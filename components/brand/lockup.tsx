@@ -16,12 +16,17 @@ export function Lockup({
   orientation = "horizontal",
   className,
   style,
+  markScale,
 }: {
   orientation?: "horizontal" | "stacked";
   className?: string;
   style?: React.CSSProperties;
+  /** Mark height in em, relative to the wordmark. Defaults: 1.5 horizontal,
+   *  1.85 stacked. */
+  markScale?: number;
 }) {
   const horizontal = orientation === "horizontal";
+  const scale = markScale ?? (horizontal ? 1.5 : 1.85);
   return (
     <span
       style={style}
@@ -34,10 +39,8 @@ export function Lockup({
       )}
     >
       <CloudMarkClassic
-        className={cn(
-          "flex-none text-c-accent",
-          horizontal ? "h-[1.5em] w-[1.5em]" : "h-[1.85em] w-[1.85em]",
-        )}
+        className="flex-none text-c-accent"
+        style={{ width: `${scale}em`, height: `${scale}em` }}
       />
       <span className="font-extrabold tracking-tight text-c-ink">Cloud9</span>
     </span>
