@@ -326,3 +326,21 @@ body {
     transform: none;
   }
 }
+
+/* Demo pill row collapses once the choice is "sent", like the real app. */
+.demo-pillrow {
+  overflow: hidden;
+  max-height: 6rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .demo-pillrow {
+    transition:
+      max-height 0.35s ease,
+      opacity 0.3s ease;
+  }
+}
+.demo-pillrow[data-collapsed] {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}

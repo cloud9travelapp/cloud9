@@ -116,33 +116,43 @@ export function LoadingDots() {
 
 /**
  * Quick-reply option pills. Interactive when `onSelect` is given (real chat);
- * inert + aria-hidden when omitted (landing demo preview).
+ * inert + aria-hidden when omitted (landing demo preview). `highlight` marks one
+ * option as pressed (the demo uses it to show a choice being made).
  */
 export function QuickReplyPills({
   options,
   onSelect,
+  highlight,
 }: {
   options: string[];
   onSelect?: (opt: string) => void;
+  highlight?: string;
 }) {
   const interactive = typeof onSelect === "function";
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      {options.map((opt, oi) => (
-        <button
-          key={oi}
-          type="button"
-          dir="auto"
-          onClick={interactive ? () => onSelect!(opt) : undefined}
-          tabIndex={interactive ? 0 : -1}
-          aria-hidden={interactive ? undefined : true}
-          className={`rounded-full border border-c-border bg-c-surface px-4 py-2 text-sm text-c-accent transition-colors hover:bg-c-accent-soft${
-            interactive ? "" : " pointer-events-none"
-          }`}
-        >
-          {opt}
-        </button>
-      ))}
+      {options.map((opt, oi) => {
+        const pressed = opt === highlight;
+        return (
+          <button
+            key={oi}
+            type="button"
+            dir="auto"
+            onClick={interactive ? () => onSelect!(opt) : undefined}
+            tabIndex={interactive ? 0 : -1}
+            aria-hidden={interactive ? undefined : true}
+            className={`rounded-full border px-4 py-2 text-sm transition-colors${
+              interactive ? "" : " pointer-events-none"
+            } ${
+              pressed
+                ? "border-c-accent bg-c-accent text-c-on-accent"
+                : "border-c-border bg-c-surface text-c-accent hover:bg-c-accent-soft"
+            }`}
+          >
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }

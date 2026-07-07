@@ -17,7 +17,8 @@ import {
 const USER_MSG = "I want to fly to Tokyo in April, somewhere around the 10th";
 const REPLY_1 = "Tokyo in April — perfect timing for the blossoms 🌸 Which cabin should I look at?";
 const OPTIONS = ["Economy", "Premium", "Business"];
-const REPLY_2 = "Here are two great options out of Tel Aviv:";
+const CHOICE = "Economy";
+const REPLY_2 = "Here are two great economy options out of Tel Aviv:";
 
 const DEMO_FLIGHTS: FlightsPayload = {
   mock: true,
@@ -48,9 +49,11 @@ const DEMO_FLIGHTS: FlightsPayload = {
   ],
 };
 
-// phase: 0 nothing · 1 user · 2 reply-1 typing · 3 reply-1 · 4 reply-2 typing · 5 reply-2 + cards
-const FINAL = 5;
-const STEP_DELAYS = [300, 800, 1200, 1500, 1100]; // ms to reach phases 1..5
+// phase: 0 nothing · 1 user · 2 reply-1 typing · 3 reply-1 + pills · 4 "Economy"
+// highlighted · 5 choice sent (user bubble) + pills collapse · 6 reply-2 typing
+// · 7 reply-2 + cards
+const FINAL = 7;
+const STEP_DELAYS = [300, 800, 1200, 850, 700, 850, 1050]; // ms to reach phases 1..7
 
 function AgentRow({ children }: { children: React.ReactNode }) {
   return <div className="demo-msg flex flex-col items-start">{children}</div>;
@@ -135,11 +138,24 @@ export default function ChatDemo() {
             <CloudBubble>
               <span className="whitespace-pre-wrap">{REPLY_1}</span>
             </CloudBubble>
-            <QuickReplyPills options={OPTIONS} />
+            {/* pills highlight the choice (phase 4), then collapse once it's
+               "sent" (phase 5+) — mirrors the real app after a pick */}
+            <div className="demo-pillrow" data-collapsed={phase >= 5 ? "" : undefined}>
+              <QuickReplyPills
+                options={OPTIONS}
+                highlight={phase >= 4 ? CHOICE : undefined}
+              />
+            </div>
           </AgentRow>
         ) : null}
 
-        {phase === 4 ? (
+        {phase >= 5 ? (
+          <div className="demo-msg flex flex-col items-end">
+            <UserBubble content={CHOICE} />
+          </div>
+        ) : null}
+
+        {phase === 6 ? (
           <AgentRow>
             <CloudBubble>
               <LoadingDots />
@@ -147,7 +163,7 @@ export default function ChatDemo() {
           </AgentRow>
         ) : null}
 
-        {phase >= 5 ? (
+        {phase >= 7 ? (
           <AgentRow>
             <CloudBubble>
               <span className="whitespace-pre-wrap">{REPLY_2}</span>
