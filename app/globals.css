@@ -98,37 +98,22 @@
   --c-border: #f1d1b6;
 }
 
-/* Night (19–05) — deep calm blues, dark surfaces; mist is a soft warm amber
-   moonlight glow at low opacity (not a stain over the navy). */
+/* Night — a soft, lighter evening-blue (V1). No dithering mist; its character
+   comes from twinkling stars (see .night-sky). Surfaces are elevated (lighter
+   than the base) so cards/bubbles read as raised, not sunken. */
 [data-phase="night"] {
-  --c-bg-1: #061325;
-  --c-bg-2: #0d2138;
-  --c-glow: #16375f;
-  --c-cloud: #14304f;
-  --c-mist: #ffd39a;
-  --c-mist-opacity: 0.34;
-  --c-mist-blend: screen;
-  --c-surface: #16273f;
-  --c-ink: #eaf0fa;
-  --c-muted: #9fb0c9;
-  --c-accent: #f6b17a;
-  --c-accent-soft: #21344c;
-  --c-on-accent: #10233d;
-  --c-border: #2a445f;
-}
-
-/* Night base rework — PREVIEW ONLY (V1/V2 comparison). Scoped to
-   [data-night-preview] so the live app's night stays as-is until a version is
-   picked. Softer, lighter evening-blue base + re-tuned ink/muted. Surfaces
-   (--c-surface etc.) are deliberately left as the current dark navy — they'll
-   be retuned to match the winning base, not before. */
-[data-phase="night"][data-night-preview] {
   --c-bg-1: #3b4b67;
   --c-bg-2: #33425c;
   --c-glow: #4a5c7b;
   --c-cloud: #4a5b79;
+  --c-mist: #8ea6c9;
+  --c-surface: #46576f;
   --c-ink: #eef2f9;
-  --c-muted: #c2cddf;
+  --c-muted: #d4dce8;
+  --c-accent: #ffca92;
+  --c-accent-soft: #3c4f6d;
+  --c-on-accent: #10233d;
+  --c-border: #5c6d8a;
 }
 
 /* Smooth, unnoticeable transition when the phase changes. */
@@ -359,4 +344,43 @@ body {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
+}
+
+/* ── Night stars ─────────────────────────────────────────────────────────
+   Visible only at night; sparse points of light in the upper sky, each
+   twinkling on its own offset timing. Static (no twinkle) under reduced
+   motion — the stars stay, the shimmer stops. */
+.night-sky {
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+[data-phase="night"] .night-sky {
+  opacity: 1;
+}
+.night-star {
+  position: absolute;
+  border-radius: 9999px;
+  background: #f5f8ff;
+  opacity: 0.7;
+  box-shadow: 0 0 4px 1px rgba(226, 236, 255, 0.45);
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .night-star {
+    animation: twinkle var(--tw-dur, 4s) ease-in-out var(--tw-delay, 0s)
+      infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .night-sky {
+    transition: none;
+  }
 }

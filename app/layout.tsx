@@ -3,6 +3,7 @@ import { Suez_One, Heebo } from "next/font/google";
 import "./globals.css";
 import TimeOfDay from "@/components/theme/time-of-day";
 import SkyClouds from "@/components/theme/sky-background";
+import NightStars from "@/components/theme/night-stars";
 
 // Suez One — display only (big moments). Heebo — body & UI. Both cover
 // Hebrew + Latin so the bilingual type looks intentional in either language.
@@ -45,6 +46,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: PHASE_SCRIPT }} />
         <TimeOfDay />
         <SkyClouds />
+        <NightStars />
         {children}
       </body>
     </html>
