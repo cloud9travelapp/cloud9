@@ -1,8 +1,5 @@
-"use client";
-
-// Tap a phase to try it on — sets <html data-phase>, so the whole page
-// re-themes through the same mechanism the clock uses. Each swatch previews its
-// OWN palette via an element-scoped data-phase (see the [data-phase] rules in
+// Display-only strip of the five sky phases. Each swatch previews its OWN
+// palette via an element-scoped data-phase (see the [data-phase] rules in
 // globals.css), so there are no hardcoded colours here.
 const PHASES = [
   { id: "sunrise", label: "Sunrise" },
@@ -13,19 +10,10 @@ const PHASES = [
 ];
 
 export default function PhaseShowcase() {
-  const preview = (id: string) => {
-    document.documentElement.dataset.phase = id;
-  };
-
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {PHASES.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          onClick={() => preview(p.id)}
-          className="group rounded-2xl p-1 text-center outline-none transition-transform hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-c-accent/40"
-        >
+        <div key={p.id} className="text-center">
           {/* the chip carries its own phase palette; the mist colour dominates
              so each phase reads clearly (sunrise yellow-gold vs sunset coral) */}
           <span
@@ -51,7 +39,7 @@ export default function PhaseShowcase() {
           <span className="mt-2 block text-sm font-medium text-c-ink">
             {p.label}
           </span>
-        </button>
+        </div>
       ))}
     </div>
   );

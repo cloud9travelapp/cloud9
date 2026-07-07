@@ -306,8 +306,8 @@ export default async function Home() {
           An app that lives with your day
         </h2>
         <p className="mx-auto mt-3 max-w-lg text-lg text-c-muted">
-          Cloud9&apos;s sky shifts from dawn to midnight with your local time.
-          Tap a moment to try it on.
+          Cloud9&apos;s sky shifts from dawn to midnight with your local time —
+          five moods of one calm home.
         </p>
         <div className="mt-10">
           <PhaseShowcase />
