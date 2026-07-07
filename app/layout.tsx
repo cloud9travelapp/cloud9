@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Suez_One, Heebo } from "next/font/google";
 import "./globals.css";
 import TimeOfDay from "@/components/theme/time-of-day";
@@ -63,7 +64,9 @@ export default function RootLayout({
       className={`${displayFace.variable} ${bodyFace.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <script dangerouslySetInnerHTML={{ __html: PHASE_SCRIPT }} />
+        <Script id="phase-init" strategy="beforeInteractive">
+          {PHASE_SCRIPT}
+        </Script>
         <TimeOfDay />
         <SkyClouds />
         <NightStars />
