@@ -376,12 +376,16 @@ export function FlightCard({
   const [expanded, setExpanded] = useState(false);
   // hubs = the stop airports (each leg's destination except the final one)
   const hubs = offer.segments.slice(0, -1).map((s) => s.destination);
+  // Only connecting flights expand; direct flights render flat (no chevron).
+  const expandable = offer.segments.length > 1;
 
   return (
     <div
-      className="cursor-pointer select-none rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm"
-      onClick={() => setExpanded((e) => !e)}
-      aria-expanded={expanded}>
+      className={`rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+        expandable ? " cursor-pointer select-none" : ""
+      }`}
+      onClick={expandable ? () => setExpanded((e) => !e) : undefined}
+      aria-expanded={expandable ? expanded : undefined}>
       {/* airline (left) + price (right) */}
       <div dir="ltr" className="flex items-center justify-between gap-3">
         <span dir="auto" className="truncate text-sm font-semibold text-c-ink">
@@ -425,24 +429,24 @@ export function FlightCard({
         </div>
       </div>
 
-      {/* connection indicator (stops only) + expand affordance */}
-      <div
-        dir="auto"
-        className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-c-muted"
-      >
-        {hubs.length ? (
+      {/* connection indicator + expand affordance — connecting flights only */}
+      {expandable ? (
+        <div
+          dir="auto"
+          className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-c-muted"
+        >
           <span>
             {lang === "he" ? "דרך" : "via"}{" "}
             <span dir="ltr" className="tabular-nums">
               {hubs.join(", ")}
             </span>
           </span>
-        ) : null}
-        <Chevron open={expanded} />
-      </div>
+          <Chevron open={expanded} />
+        </div>
+      ) : null}
 
       {/* expanded per-leg detail: each leg's times + route, layovers between */}
-      {expanded ? (
+      {expandable && expanded ? (
         <div dir="ltr" className="mt-2 space-y-2 border-t border-c-border pt-2">
           {offer.segments.map((seg, i) => (
             <div key={i}>
