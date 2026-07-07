@@ -11,10 +11,12 @@ import {
   QuickReplyPills,
   FlightCard,
   StayCard,
+  DateCalendar,
   type FlightOfferView,
   type FlightsPayload,
   type StayOfferView,
   type StaysPayload,
+  type DatesPayload,
   type Lang,
 } from "./message-parts";
 import HeroDithering from "@/components/landing/hero-dithering";
@@ -166,6 +168,38 @@ function splitStays(content: string): {
     return { text, stays: { mock, lang, offers: offers.slice(0, 8) } };
   } catch {
     return { text, stays: null };
+  }
+}
+
+/**
+ * Mirror of splitOptions for the <<DATES>> block. Any valid JSON object yields
+ * a calendar (mode defaults to "range", lang to "en"; DateCalendar itself
+ * clamps min/max to the future). Any failure degrades to plain text.
+ */
+function splitDates(content: string): {
+  text: string;
+  dates: DatesPayload | null;
+} {
+  const text = displayText(content);
+  const raw = blockRaw(content, "DATES");
+  if (raw === null) return { text, dates: null };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { text, dates: null };
+    }
+    const obj = parsed as { lang?: unknown; mode?: unknown; min?: unknown; max?: unknown };
+    return {
+      text,
+      dates: {
+        lang: obj.lang === "he" ? "he" : "en", // default en unless exactly "he"
+        mode: obj.mode === "single" ? "single" : "range",
+        min: typeof obj.min === "string" ? obj.min : undefined,
+        max: typeof obj.max === "string" ? obj.max : undefined,
+      },
+    };
+  } catch {
+    return { text, dates: null };
   }
 }
 
@@ -366,13 +400,14 @@ export default function ChatClient({
               }
 
               // Strip any special block from the display text, then decide
-              // whether to show quick-reply pills, flight cards, or stay cards
-              // below (mutually exclusive: one block per message).
+              // whether to show quick-reply pills, flight cards, stay cards, or
+              // a date calendar below (mutually exclusive: one block per message).
               const opt = splitOptions(m.content);
               const options = opt.options;
               let text = opt.text;
               let flights: FlightsPayload | null = null;
               let stays: StaysPayload | null = null;
+              let dates: DatesPayload | null = null;
               if (!options) {
                 const fl = splitFlights(m.content);
                 if (fl.flights) {
@@ -380,8 +415,14 @@ export default function ChatClient({
                   flights = fl.flights;
                 } else {
                   const st = splitStays(m.content);
-                  text = st.text;
-                  stays = st.stays;
+                  if (st.stays) {
+                    text = st.text;
+                    stays = st.stays;
+                  } else {
+                    const dt = splitDates(m.content);
+                    text = dt.text;
+                    dates = dt.dates;
+                  }
                 }
               }
               const isLast = i === messages.length - 1;
@@ -427,6 +468,19 @@ export default function ChatClient({
                           onSelect={(s) => void send(s)}
                         />
                       ))}
+                    </div>
+                  ) : null}
+                  {/* Like the pills, the calendar is only actionable on the
+                      latest message — stale calendars don't linger in history. */}
+                  {dates && isLast && !isStreaming ? (
+                    <div className="mt-2 w-full max-w-[82%]">
+                      <DateCalendar
+                        mode={dates.mode}
+                        lang={dates.lang}
+                        min={dates.min}
+                        max={dates.max}
+                        onSelect={(s) => void send(s)}
+                      />
                     </div>
                   ) : null}
                 </div>
