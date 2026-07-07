@@ -15,10 +15,10 @@ import {
 // actual chat components so it can't drift from the product. English + LTR to
 // match the landing. Mock data only.
 const USER_MSG = "I want to fly to Tokyo in April, somewhere around the 10th";
-const REPLY_1 = "Tokyo in April — perfect timing for the blossoms 🌸 Which cabin should I look at?";
+const REPLY_1 = "Tokyo in April is a good choice — cherry-blossom season. Which cabin should I look at?";
 const OPTIONS = ["Economy", "Premium", "Business"];
 const CHOICE = "Economy";
-const REPLY_2 = "Here are two great economy options out of Tel Aviv:";
+const REPLY_2 = "Two economy options departing Tel Aviv:";
 
 const DEMO_FLIGHTS: FlightsPayload = {
   mock: true,
