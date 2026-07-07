@@ -48,6 +48,14 @@ export type StaysPayload = {
   offers: StayOfferView[];
 };
 
+export type DateMode = "single" | "range";
+export type DatesPayload = {
+  lang: Lang;
+  mode: DateMode;
+  min?: string; // YYYY-MM-DD; the calendar clamps it to today regardless
+  max?: string; // YYYY-MM-DD; defaults to one year out
+};
+
 /** Accent circle with the white Cloud9 mark — the Concierge avatar. */
 export function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
   return (
@@ -250,6 +258,14 @@ const LABELS: Record<
     select: string;
     selected: string; // prefix for the structured choice message
     layover: (duration: string, hub: string) => string;
+    confirm: string;
+    pickDate: string;
+    pickStart: string;
+    pickEnd: string;
+    prevMonth: string;
+    nextMonth: string;
+    pickedSingle: (iso: string) => string;
+    pickedRange: (startIso: string, endIso: string) => string;
   }
 > = {
   he: {
@@ -270,6 +286,14 @@ const LABELS: Record<
     select: "בחר",
     selected: "בחרתי",
     layover: (dur, hub) => `עצירה ${dur} ב-${hub}`,
+    confirm: "אישור",
+    pickDate: "בחר תאריך",
+    pickStart: "בחר תאריך התחלה",
+    pickEnd: "בחר תאריך סיום",
+    prevMonth: "חודש קודם",
+    nextMonth: "חודש הבא",
+    pickedSingle: (iso) => `בחרתי תאריך: ${iso}`,
+    pickedRange: (startIso, endIso) => `בחרתי תאריכים: ${startIso} עד ${endIso}`,
   },
   en: {
     duration: (min) => {
@@ -289,6 +313,14 @@ const LABELS: Record<
     select: "Select",
     selected: "Selected",
     layover: (dur, hub) => `${dur} layover in ${hub}`,
+    confirm: "Confirm",
+    pickDate: "Pick a date",
+    pickStart: "Pick a start date",
+    pickEnd: "Pick an end date",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    pickedSingle: (iso) => `Selected date: ${iso}`,
+    pickedRange: (startIso, endIso) => `Selected dates: ${startIso} to ${endIso}`,
   },
 };
 
@@ -589,6 +621,237 @@ export function StayCard({
           }
         />
       ) : null}
+    </div>
+  );
+}
+
+/** Local calendar date as YYYY-MM-DD (NOT toISOString, which is UTC and can
+ *  shift the day across midnight in some timezones). */
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Inline calendar for the <<DATES>> block — the traveler picks a date (or a
+ * range) and Confirm posts a structured choice message, like CardSelect.
+ * Interactive when `onSelect` is given; inert for the landing demo when omitted.
+ * Past dates are unselectable no matter what bounds the block carries.
+ */
+export function DateCalendar({
+  mode,
+  lang,
+  min,
+  max,
+  onSelect,
+}: {
+  mode: DateMode;
+  lang: Lang;
+  min?: string;
+  max?: string;
+  onSelect?: (choice: string) => void;
+}) {
+  const L = LABELS[lang];
+  const interactive = typeof onSelect === "function";
+  const today = isoDay(new Date());
+  const minIso = min && ISO_DAY_RE.test(min) && min > today ? min : today;
+  const yearOut = new Date();
+  yearOut.setFullYear(yearOut.getFullYear() + 1);
+  const defaultMax = isoDay(yearOut);
+  const maxIso = max && ISO_DAY_RE.test(max) && max > minIso ? max : defaultMax;
+
+  // Open on the first selectable month.
+  const [view, setView] = useState(() => ({
+    y: Number(minIso.slice(0, 4)),
+    m: Number(minIso.slice(5, 7)) - 1,
+  }));
+  const [start, setStart] = useState<string | null>(null);
+  const [end, setEnd] = useState<string | null>(null);
+
+  const locale = lang === "he" ? "he-IL" : "en-US";
+  const monthTitle = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(view.y, view.m, 1));
+  const weekdayFmt = new Intl.DateTimeFormat(locale, { weekday: "narrow" });
+  // Weeks start on Sunday in both product languages; 2023-01-01 was a Sunday.
+  const weekdays = Array.from({ length: 7 }, (_, i) =>
+    weekdayFmt.format(new Date(2023, 0, 1 + i)),
+  );
+
+  const ym = `${view.y}-${String(view.m + 1).padStart(2, "0")}`;
+  const canPrev = ym > minIso.slice(0, 7);
+  const canNext = ym < maxIso.slice(0, 7);
+  const firstDow = new Date(view.y, view.m, 1).getDay();
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const cells: (string | null)[] = [
+    ...Array.from({ length: firstDow }, () => null),
+    ...Array.from(
+      { length: daysInMonth },
+      (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`,
+    ),
+  ];
+
+  function moveMonth(delta: number) {
+    setView((v) => {
+      const d = new Date(v.y, v.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  }
+
+  function pick(iso: string) {
+    if (mode === "single") {
+      setStart(iso);
+      setEnd(null);
+      return;
+    }
+    if (!start || end) {
+      setStart(iso);
+      setEnd(null);
+    } else if (iso < start) {
+      setStart(iso);
+    } else if (iso > start) {
+      setEnd(iso);
+    }
+  }
+
+  const complete = mode === "single" ? start !== null : start !== null && end !== null;
+  const hint =
+    mode === "single" ? L.pickDate : start && !end ? L.pickEnd : L.pickStart;
+
+  return (
+    <div
+      dir={lang === "he" ? "rtl" : "ltr"}
+      aria-hidden={interactive ? undefined : true}
+      className={`w-full max-w-[340px] rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+        interactive ? "" : " pointer-events-none"
+      }`}
+    >
+      {/* month title + nav (start-arrow goes back, end-arrow forward) */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={interactive && canPrev ? () => moveMonth(-1) : undefined}
+          disabled={!canPrev || !interactive}
+          tabIndex={interactive ? 0 : -1}
+          aria-label={L.prevMonth}
+          className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-c-ink transition-colors hover:bg-c-accent-soft disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4${lang === "he" ? " -scale-x-100" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <span className="text-sm font-semibold text-c-ink">{monthTitle}</span>
+        <button
+          type="button"
+          onClick={interactive && canNext ? () => moveMonth(1) : undefined}
+          disabled={!canNext || !interactive}
+          tabIndex={interactive ? 0 : -1}
+          aria-label={L.nextMonth}
+          className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-c-ink transition-colors hover:bg-c-accent-soft disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4${lang === "he" ? " -scale-x-100" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+
+      {/* weekday header */}
+      <div className="mt-2 grid grid-cols-7 text-center text-[11px] text-c-muted">
+        {weekdays.map((w, i) => (
+          <span key={i}>{w}</span>
+        ))}
+      </div>
+
+      {/* day grid — no column gap so a selected range reads as one band */}
+      <div className="mt-1 grid grid-cols-7 gap-y-1">
+        {cells.map((iso, i) => {
+          if (!iso) return <span key={i} />;
+          const disabled = iso < minIso || iso > maxIso;
+          const isStart = iso === start;
+          const isEnd = iso === end;
+          const inRange = start !== null && end !== null && iso > start && iso < end;
+          let cls =
+            "flex h-10 w-full items-center justify-center text-sm tabular-nums transition-colors";
+          if (isStart || isEnd) {
+            cls += " bg-c-accent font-semibold text-c-on-accent";
+            cls += isStart
+              ? end && !isEnd
+                ? " rounded-s-full"
+                : " rounded-full"
+              : " rounded-e-full";
+          } else if (inRange) {
+            cls += " bg-c-accent-soft text-c-ink";
+          } else if (disabled) {
+            cls += " text-c-muted opacity-35";
+          } else {
+            cls += ` rounded-full hover:bg-c-accent-soft ${
+              iso === today ? "font-bold text-c-accent" : "text-c-ink"
+            }`;
+          }
+          return (
+            <button
+              key={iso}
+              type="button"
+              onClick={interactive && !disabled ? () => pick(iso) : undefined}
+              disabled={disabled || !interactive}
+              tabIndex={interactive && !disabled ? 0 : -1}
+              aria-pressed={isStart || isEnd || inRange || undefined}
+              className={cls}
+            >
+              {Number(iso.slice(8))}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* selection summary (ISO stays LTR) + confirm */}
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-c-border pt-2">
+        {start ? (
+          <span dir="ltr" className="text-sm text-c-ink tabular-nums">
+            {mode === "range" && end ? `${start} → ${end}` : start}
+          </span>
+        ) : (
+          <span className="text-xs text-c-muted">{hint}</span>
+        )}
+        <button
+          type="button"
+          onClick={
+            interactive && complete
+              ? () =>
+                  onSelect!(
+                    mode === "single"
+                      ? L.pickedSingle(start!)
+                      : L.pickedRange(start!, end!),
+                  )
+              : undefined
+          }
+          disabled={!complete || !interactive}
+          tabIndex={interactive ? 0 : -1}
+          className="flex-none rounded-full bg-c-accent px-4 py-1.5 text-xs font-semibold text-c-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {L.confirm}
+        </button>
+      </div>
     </div>
   );
 }
