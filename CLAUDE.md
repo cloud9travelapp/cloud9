@@ -12,17 +12,18 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - **Brand**: `components/brand/` (cloud mark + `Lockup`); favicon `app/icon.svg` + `app/apple-icon.tsx`; social image `app/opengraph-image.tsx` (fixed sunset palette).
 
 ## Recently shipped
+- **Date-picker block** — `<<DATES>>` block (`{"lang","mode":"single"|"range","min"?,"max"?}`) → `DateCalendar` in `message-parts.tsx`: phase-tokened month calendar, he/en via `Intl`, RTL-aware, past dates unselectable (min clamped to today client-side), Confirm posts `בחרתי תאריכים: X עד Y` / `Selected dates: X to Y`. Only actionable on the latest message (like pills). Prompt: calendar for concrete dates, OPTIONS pills for vague timing.
 - **Stay agent** — hotel search mirroring flights (mock provider, `StayCard`, he/en localized via neutral keys).
 - **Card actions** — shared `CardSelect` (Select → structured user message); expandable flight details (connecting flights only; direct flights render flat).
 - **Behavior tuning** — professional concierge tone (no slang/emoji, both languages); one question per turn but NEVER decides material choices (offer them as options); offers always re-sent as card blocks (never text lists); confirm carried-over context on a destination switch (Yes/Change pills); guided narrowing for undecided users; fixes for raw-block leak, mixed-language leak, and past-date invention.
 - **Brand system** — mark, lockups (horizontal for header, stacked for og), living float (accent-bound), favicon + og image.
 
 ## Open TODOs (details in `memory/`)
-- Date-picker block (next feature — plan first).
 - RTL/LTR by user language preference (build with onboarding).
 - Room selection within a stay (needs the real stay provider).
 - Automated tests for critical flows (pre-launch, deliberate task).
-- Pre-launch: footer legal links (favicon + og already done).
+- Pre-launch: footer legal links; connect the cloud9app.io domain.
+- External: Duffel reply — decision Thu 2026-07-09 (else follow-up + Amadeus test account).
 
 ## Working process
 - Non-trivial features: short plan → **WAIT for approval** → implement.
