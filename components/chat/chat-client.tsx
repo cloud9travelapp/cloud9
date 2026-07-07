@@ -38,25 +38,40 @@ function formatTime(iso?: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-const OPTIONS_START = "<<OPTIONS>>";
-const OPTIONS_END = "<<END>>";
+// Assistant messages may carry ONE trailing special block (<<OPTIONS>>,
+// <<FLIGHTS>>, <<STAYS>> … <<END>>).
+//
+// For DISPLAY we strip everything from the first "<<" onward — bulletproof
+// against a complete marker, a partial marker still streaming in (e.g.
+// "<<FLIGH"), or a slightly-malformed one, so raw block content is NEVER shown.
+// For PARSING we match markers tolerantly (case- and inner-whitespace-
+// insensitive), so cards still render even if the model formats a marker oddly.
+function displayText(content: string): string {
+  const i = content.indexOf("<<");
+  return (i === -1 ? content : content.slice(0, i)).trimEnd();
+}
+
+function blockRaw(content: string, tag: string): string | null {
+  const open = new RegExp(`<<\\s*${tag}\\s*>>`, "i").exec(content);
+  if (!open) return null;
+  const rest = content.slice(open.index + open[0].length);
+  const end = /<<\s*END\s*>>/i.exec(rest);
+  if (!end) return null;
+  return rest.slice(0, end.index).trim();
+}
 
 /**
  * Split an assistant message into its display text and any quick-reply options.
- * Everything from the <<OPTIONS>> marker onward is stripped from the text (so raw
- * markers/JSON never render, even mid-stream). Options are returned only when a
- * complete, valid block parses; any failure degrades to plain text.
+ * Options are returned only when a complete, valid block parses; any failure
+ * degrades to plain text. The display text never contains raw block markup.
  */
 function splitOptions(content: string): {
   text: string;
   options: string[] | null;
 } {
-  const start = content.indexOf(OPTIONS_START);
-  if (start === -1) return { text: content, options: null };
-  const text = content.slice(0, start).trimEnd();
-  const end = content.indexOf(OPTIONS_END, start);
-  if (end === -1) return { text, options: null };
-  const raw = content.slice(start + OPTIONS_START.length, end).trim();
+  const text = displayText(content);
+  const raw = blockRaw(content, "OPTIONS");
+  if (raw === null) return { text, options: null };
   try {
     const parsed = JSON.parse(raw) as { options?: unknown };
     if (!Array.isArray(parsed.options)) return { text, options: null };
@@ -69,25 +84,18 @@ function splitOptions(content: string): {
   }
 }
 
-const FLIGHTS_START = "<<FLIGHTS>>";
-const FLIGHTS_END = "<<END>>";
-
 /**
- * Mirror of splitOptions for the <<FLIGHTS>> block. Strips from the marker so raw
- * JSON never shows; parses only a complete, valid block; any failure degrades to
- * plain text. Accepts `{ lang, mock, offers }` or a bare offers array. `lang`
- * defaults to "en" unless it is exactly "he".
+ * Mirror of splitOptions for the <<FLIGHTS>> block. Accepts `{ lang, mock,
+ * offers }` or a bare offers array. `lang` defaults to "en" unless exactly "he".
+ * Any failure degrades to plain text; the display text never shows raw markup.
  */
 function splitFlights(content: string): {
   text: string;
   flights: FlightsPayload | null;
 } {
-  const start = content.indexOf(FLIGHTS_START);
-  if (start === -1) return { text: content, flights: null };
-  const text = content.slice(0, start).trimEnd();
-  const end = content.indexOf(FLIGHTS_END, start);
-  if (end === -1) return { text, flights: null };
-  const raw = content.slice(start + FLIGHTS_START.length, end).trim();
+  const text = displayText(content);
+  const raw = blockRaw(content, "FLIGHTS");
+  if (raw === null) return { text, flights: null };
   try {
     const parsed = JSON.parse(raw) as unknown;
     let mock = true;
@@ -119,24 +127,18 @@ function splitFlights(content: string): {
   }
 }
 
-const STAYS_START = "<<STAYS>>";
-const STAYS_END = "<<END>>";
-
 /**
- * Mirror of splitFlights for the <<STAYS>> block. Strips from the marker so raw
- * JSON never shows; parses only a complete, valid block; any failure degrades to
- * plain text. `lang` defaults to "en" unless exactly "he".
+ * Mirror of splitFlights for the <<STAYS>> block. `lang` defaults to "en" unless
+ * exactly "he". Any failure degrades to plain text; the display text never shows
+ * raw markup.
  */
 function splitStays(content: string): {
   text: string;
   stays: StaysPayload | null;
 } {
-  const start = content.indexOf(STAYS_START);
-  if (start === -1) return { text: content, stays: null };
-  const text = content.slice(0, start).trimEnd();
-  const end = content.indexOf(STAYS_END, start);
-  if (end === -1) return { text, stays: null };
-  const raw = content.slice(start + STAYS_START.length, end).trim();
+  const text = displayText(content);
+  const raw = blockRaw(content, "STAYS");
+  if (raw === null) return { text, stays: null };
   try {
     const parsed = JSON.parse(raw) as unknown;
     let mock = true;

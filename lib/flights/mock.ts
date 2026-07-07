@@ -24,6 +24,22 @@ function makeRng(seed: number): () => number {
   };
 }
 
+/** Keep the mock's dates sane: if a past (or unparseable) departure date comes
+ *  in, roll it forward to a real future date so cards never show past years. */
+function normalizeFutureDate(dateStr: string): string {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) {
+    return new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  }
+  // Roll whole years forward (preserves the intended month/day, e.g. "Aug 1").
+  while (d.getTime() < today.getTime()) {
+    d.setUTCFullYear(d.getUTCFullYear() + 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 const ISRAELI_AIRLINES = ["El Al", "Wizz Air", "Israir", "Arkia", "Lufthansa"];
 const INTL_AIRLINES = [
   "Lufthansa",
@@ -55,9 +71,10 @@ export async function mockSearchFlights(
   const passengers = Math.max(1, query.passengers ?? 1);
   const cabinClass = query.cabinClass ?? "economy";
   const cabinMult = CABIN_MULTIPLIER[cabinClass] ?? 1;
+  const departureDate = normalizeFutureDate(query.departureDate);
 
   const seed = hashString(
-    `${origin}-${destination}-${query.departureDate}-${cabinClass}`,
+    `${origin}-${destination}-${departureDate}-${cabinClass}`,
   );
   const rand = makeRng(seed);
 
@@ -75,7 +92,7 @@ export async function mockSearchFlights(
     const departHour = 6 + Math.floor(rand() * 15); // 06:00–20:00
     const departMinute = [0, 15, 30, 45][Math.floor(rand() * 4)];
 
-    const depart = new Date(`${query.departureDate}T00:00:00Z`);
+    const depart = new Date(`${departureDate}T00:00:00Z`);
     depart.setUTCHours(departHour, departMinute, 0, 0);
 
     let segments: FlightSegment[];

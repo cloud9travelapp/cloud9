@@ -278,9 +278,12 @@ export async function POST(request: Request) {
     ? `Known travel preferences: ${merged.join(", ")}.`
     : "No saved preferences yet.";
 
+  const today = new Date().toISOString().slice(0, 10);
   const system = `You're the Cloud9 Concierge — basically ${firstName}'s well-traveled friend who happens to know everything about travel. Warm, easy to talk to, genuinely into this.
 
 Who you're talking to: ${firstName}. ${prefLine}
+
+Today's date is ${today}. Resolve every date the user gives to a real, FUTURE date in YYYY-MM-DD — never a past year. If they name a month/day with no year, use the next future occurrence.
 
 How you talk:
 - Sound like a real person, not an app. Natural and casual, never robotic, stiff, or corporate.
