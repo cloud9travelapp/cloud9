@@ -39,15 +39,23 @@ export default function HeroDithering() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    setMist(readMist());
-    setEnabled(true);
+    // Day phases carry the mist; night does not (its base does the work).
+    const apply = () => {
+      if (document.documentElement.dataset.phase === "night") {
+        setEnabled(false);
+        return;
+      }
+      setMist(readMist());
+      setEnabled(true);
+    };
+    apply();
 
     // Follow the clock. A short settle delay lets the ~900ms token transition
     // land near its target before we sample the mist colour.
     let t: number | undefined;
     const obs = new MutationObserver(() => {
       window.clearTimeout(t);
-      t = window.setTimeout(() => setMist(readMist()), 950);
+      t = window.setTimeout(apply, 950);
     });
     obs.observe(document.documentElement, {
       attributes: true,

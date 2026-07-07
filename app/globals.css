@@ -117,6 +117,20 @@
   --c-border: #2a445f;
 }
 
+/* Night base rework — PREVIEW ONLY (V1/V2 comparison). Scoped to
+   [data-night-preview] so the live app's night stays as-is until a version is
+   picked. Softer, lighter evening-blue base + re-tuned ink/muted. Surfaces
+   (--c-surface etc.) are deliberately left as the current dark navy — they'll
+   be retuned to match the winning base, not before. */
+[data-phase="night"][data-night-preview] {
+  --c-bg-1: #3b4b67;
+  --c-bg-2: #33425c;
+  --c-glow: #4a5c7b;
+  --c-cloud: #4a5b79;
+  --c-ink: #eef2f9;
+  --c-muted: #c2cddf;
+}
+
 /* Smooth, unnoticeable transition when the phase changes. */
 html {
   transition:
