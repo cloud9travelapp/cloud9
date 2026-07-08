@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { CloudMarkClassic } from "@/components/brand/cloud-marks";
 
 export type Trip = { id: string; name: string; created_at: string };
@@ -27,6 +29,28 @@ export default function TripSidebar({
   style?: React.CSSProperties;
   onNavigate?: () => void;
 }) {
+  const router = useRouter();
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  async function saveRename(tripId: string) {
+    const name = draft.trim();
+    setRenamingId(null);
+    const current = trips.find((t) => t.id === tripId)?.name;
+    if (!name || name.length > 60 || name === current) return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) console.error(`Rename failed: HTTP ${res.status}`);
+    } catch (err) {
+      console.error("Rename failed:", err);
+    }
+    router.refresh();
+  }
+
   return (
     <aside
       style={style}
@@ -67,13 +91,48 @@ export default function TripSidebar({
           <ul className="flex flex-col gap-1">
             {trips.map((t) => {
               const active = t.id === activeTripId;
+              const renaming = t.id === renamingId;
+              if (renaming) {
+                // Editing state: a plain row (no Link, so typing can't navigate)
+                // with an inline input. Enter/blur saves, Escape cancels.
+                return (
+                  <li key={t.id}>
+                    <div className="flex items-center gap-2.5 rounded-xl bg-c-accent-soft px-3 py-2.5 ring-1 ring-inset ring-c-accent/25">
+                      <span
+                        aria-hidden="true"
+                        className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent"
+                      >
+                        <CloudMarkClassic className="h-4 w-4" />
+                      </span>
+                      <input
+                        autoFocus
+                        dir="auto"
+                        value={draft}
+                        maxLength={60}
+                        aria-label="Trip name"
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void saveRename(t.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void saveRename(t.id);
+                          } else if (e.key === "Escape") {
+                            setRenamingId(null);
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-lg border border-c-accent/40 bg-c-surface px-2 py-1 font-display text-sm font-semibold text-c-ink outline-none focus:ring-2 focus:ring-c-accent/25"
+                      />
+                    </div>
+                  </li>
+                );
+              }
               return (
                 <li key={t.id}>
                   <Link
                     href={`/chat?trip=${t.id}`}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors ${
+                    className={`group flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors ${
                       active
                         ? "bg-c-accent-soft ring-1 ring-inset ring-c-accent/25"
                         : "hover:bg-c-accent-soft/60"
@@ -102,6 +161,33 @@ export default function TripSidebar({
                         {formatDate(t.created_at)}
                       </span>
                     </span>
+                    {active ? (
+                      <button
+                        type="button"
+                        aria-label="Rename trip"
+                        title="Rename"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDraft(t.name);
+                          setRenamingId(t.id);
+                        }}
+                        className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-surface hover:text-c-accent"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        </svg>
+                      </button>
+                    ) : null}
                   </Link>
                 </li>
               );
