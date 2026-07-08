@@ -1,0 +1,70 @@
+/**
+ * Deterministic reply-language decision for the concierge. The model never
+ * re-decides this: the route computes it per turn and injects it into the
+ * system prompt as a hard directive.
+ *
+ * Policy (approved 2026-07-08): the DOMINANT language of the user's latest
+ * message wins — a lone foreign word or place name doesn't flip the reply,
+ * a genuine full switch is honored. When the message is ambiguous (evenly
+ * mixed, or no real letters like "10-15?"), stay with the conversation's
+ * established language. A brand-new ambiguous conversation defaults to
+ * Hebrew — the future onboarding language preference plugs in at that seam.
+ */
+
+export type ReplyLang = "he" | "other";
+
+const HEBREW_LETTERS = /[\u0590-\u05FF]/g;
+const LATIN_LETTERS = /[A-Za-z]/g;
+
+const DOMINANCE = 0.7; // share of words that makes a script decisive
+const MIN_LETTERS = 3; // fewer letters than this = no signal at all
+
+/**
+ * "he", "other" (decisively non-Hebrew), or null when ambiguous.
+ * Dominance is measured in WORDS, not letters: long Latin proper nouns
+ * ("British Airways", "Lufthansa") would out-letter the short Hebrew words
+ * around them, but they can't out-count the sentence that carries them.
+ */
+function dominantLang(text: string): ReplyLang | null {
+  const heLetters = (text.match(HEBREW_LETTERS) ?? []).length;
+  const latinLetters = (text.match(LATIN_LETTERS) ?? []).length;
+  if (heLetters + latinLetters < MIN_LETTERS) return null;
+  let he = 0;
+  let latin = 0;
+  for (const token of text.split(/[\s,.;:!?()"'«»\-–—/\\]+/)) {
+    const h = (token.match(HEBREW_LETTERS) ?? []).length;
+    const l = (token.match(LATIN_LETTERS) ?? []).length;
+    if (h === 0 && l === 0) continue;
+    if (h >= l) he++;
+    else latin++;
+  }
+  const total = he + latin;
+  if (total === 0) return null;
+  if (he / total >= DOMINANCE) return "he";
+  if (latin / total >= DOMINANCE) return "other";
+  return null;
+}
+
+/** Assistant messages carry trailing <<BLOCK>> JSON (English keys, airline
+ *  names, IATA codes) that would skew the letter counts — judge only the
+ *  visible text before the first marker. Harmless for user messages. */
+function visibleText(content: string): string {
+  const i = content.indexOf("<<");
+  return i === -1 ? content : content.slice(0, i);
+}
+
+export function detectReplyLanguage(
+  message: string,
+  history: { role: "user" | "assistant"; content: string }[],
+): ReplyLang {
+  const latest = dominantLang(message);
+  if (latest) return latest;
+  // Ambiguous — walk back to the last decisive turn. Assistant replies embody
+  // the previous decision; structured user messages (card selects) usually
+  // land here as ambiguous and are skipped, which is exactly right.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const lang = dominantLang(visibleText(history[i].content));
+    if (lang) return lang;
+  }
+  return "he"; // primary audience; onboarding preference replaces this later
+}
