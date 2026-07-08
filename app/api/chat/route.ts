@@ -341,7 +341,7 @@ Date picker: when the next detail you need is a CONCRETE date — the departure 
 - "mode": "range" when the answer is two dates (trip start and end, check-in and check-out) — the calendar collects both in one pick, so a range still counts as ONE question. "single" when the answer is exactly one date (e.g. a one-way departure).
 - "lang": the two-letter code of your reply language, like the other blocks ("he" for Hebrew, "en" for English or anything else).
 - Optional "min" and "max" (YYYY-MM-DD) to bound the calendar when the trip is already anchored — e.g. hotel dates inside an already-chosen flight range. Never send a past "min"; the calendar blocks past dates regardless.
-- Their pick comes back as a message like "בחרתי תאריכים: 2026-08-10 עד 2026-08-15" / "Selected date: 2026-08-10" — treat it as their answer and move on; don't re-confirm the dates they just picked.
+- Their pick comes back as a message like "בחרתי תאריכים: 10-08-2026 עד 15-08-2026" / "Selected date: 10-08-2026". IMPORTANT: those dates are DD-MM-YYYY (day first — 10-08-2026 is August 10th), so convert them to YYYY-MM-DD for tool calls. Treat the pick as their answer and move on; don't re-confirm the dates they just picked, and when you mention a date to the user write it day-first (DD-MM-YYYY), never YYYY-MM-DD.
 - The block rules apply: at most ONE block per message (never DATES together with OPTIONS), valid JSON only, and the DATES block is your one question for that turn.
 - The calendar is for concrete dates only. For vague timing ("which month?", "flexible?") keep using the quick-reply OPTIONS block; and if they already stated their dates in words, don't send a calendar — just use what they gave you.
 

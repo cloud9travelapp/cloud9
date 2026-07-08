@@ -292,8 +292,9 @@ const LABELS: Record<
     pickEnd: "בחר תאריך סיום",
     prevMonth: "חודש קודם",
     nextMonth: "חודש הבא",
-    pickedSingle: (iso) => `בחרתי תאריך: ${iso}`,
-    pickedRange: (startIso, endIso) => `בחרתי תאריכים: ${startIso} עד ${endIso}`,
+    pickedSingle: (iso) => `בחרתי תאריך: ${dmy(iso)}`,
+    pickedRange: (startIso, endIso) =>
+      `בחרתי תאריכים: ${dmy(startIso)} עד ${dmy(endIso)}`,
   },
   en: {
     duration: (min) => {
@@ -319,8 +320,9 @@ const LABELS: Record<
     pickEnd: "Pick an end date",
     prevMonth: "Previous month",
     nextMonth: "Next month",
-    pickedSingle: (iso) => `Selected date: ${iso}`,
-    pickedRange: (startIso, endIso) => `Selected dates: ${startIso} to ${endIso}`,
+    pickedSingle: (iso) => `Selected date: ${dmy(iso)}`,
+    pickedRange: (startIso, endIso) =>
+      `Selected dates: ${dmy(startIso)} to ${dmy(endIso)}`,
   },
 };
 
@@ -631,6 +633,11 @@ function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** User-facing date: DD-MM-YYYY, day first. Internal values stay ISO. */
+function dmy(iso: string): string {
+  return `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
+}
+
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -828,7 +835,7 @@ export function DateCalendar({
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-c-border pt-2">
         {start ? (
           <span dir="ltr" className="text-sm text-c-ink tabular-nums">
-            {mode === "range" && end ? `${start} → ${end}` : start}
+            {mode === "range" && end ? `${dmy(start)} → ${dmy(end)}` : dmy(start)}
           </span>
         ) : (
           <span className="text-xs text-c-muted">{hint}</span>
