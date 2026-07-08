@@ -264,8 +264,9 @@ const LABELS: Record<
     pickEnd: string;
     prevMonth: string;
     nextMonth: string;
+    nights: (n: number) => string;
     pickedSingle: (iso: string) => string;
-    pickedRange: (startIso: string, endIso: string) => string;
+    pickedRange: (startIso: string, endIso: string, nights: number) => string;
   }
 > = {
   he: {
@@ -292,9 +293,10 @@ const LABELS: Record<
     pickEnd: "בחר תאריך סיום",
     prevMonth: "חודש קודם",
     nextMonth: "חודש הבא",
+    nights: (n) => (n === 1 ? "לילה אחד" : `${n} לילות`),
     pickedSingle: (iso) => `בחרתי תאריך: ${dmy(iso)}`,
-    pickedRange: (startIso, endIso) =>
-      `בחרתי תאריכים: ${dmy(startIso)} עד ${dmy(endIso)}`,
+    pickedRange: (startIso, endIso, nights) =>
+      `בחרתי תאריכים: ${dmy(startIso)} עד ${dmy(endIso)} (${nights === 1 ? "לילה אחד" : `${nights} לילות`})`,
   },
   en: {
     duration: (min) => {
@@ -320,9 +322,10 @@ const LABELS: Record<
     pickEnd: "Pick an end date",
     prevMonth: "Previous month",
     nextMonth: "Next month",
+    nights: (n) => (n === 1 ? "1 night" : `${n} nights`),
     pickedSingle: (iso) => `Selected date: ${dmy(iso)}`,
-    pickedRange: (startIso, endIso) =>
-      `Selected dates: ${dmy(startIso)} to ${dmy(endIso)}`,
+    pickedRange: (startIso, endIso, nights) =>
+      `Selected dates: ${dmy(startIso)} to ${dmy(endIso)} (${nights === 1 ? "1 night" : `${nights} nights`})`,
   },
 };
 
@@ -638,6 +641,14 @@ function dmy(iso: string): string {
   return `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
 }
 
+/** Whole nights between two ISO days (UTC-anchored so DST can't skew it). */
+function nightsBetween(startIso: string, endIso: string): number {
+  const a = Date.parse(`${startIso}T00:00:00Z`);
+  const b = Date.parse(`${endIso}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -831,11 +842,20 @@ export function DateCalendar({
         })}
       </div>
 
-      {/* selection summary (ISO stays LTR) + confirm */}
+      {/* selection summary (dates LTR, live night count) + confirm */}
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-c-border pt-2">
         {start ? (
-          <span dir="ltr" className="text-sm text-c-ink tabular-nums">
-            {mode === "range" && end ? `${dmy(start)} → ${dmy(end)}` : dmy(start)}
+          <span className="flex flex-wrap items-baseline gap-x-2">
+            <span dir="ltr" className="text-sm text-c-ink tabular-nums">
+              {mode === "range" && end
+                ? `${dmy(start)} → ${dmy(end)}`
+                : dmy(start)}
+            </span>
+            {mode === "range" && end ? (
+              <span dir="auto" className="text-xs font-semibold text-c-accent">
+                {L.nights(nightsBetween(start, end))}
+              </span>
+            ) : null}
           </span>
         ) : (
           <span className="text-xs text-c-muted">{hint}</span>
@@ -848,7 +868,7 @@ export function DateCalendar({
                   onSelect!(
                     mode === "single"
                       ? L.pickedSingle(start!)
-                      : L.pickedRange(start!, end!),
+                      : L.pickedRange(start!, end!, nightsBetween(start!, end!)),
                   )
               : undefined
           }
