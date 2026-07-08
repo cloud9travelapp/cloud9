@@ -246,15 +246,18 @@ export async function POST(request: Request) {
     trip = data;
   }
 
-  // Prior conversation for THIS trip (for context and first-message detection).
+  // Prior conversation for THIS trip — the LATEST 40 messages, fetched
+  // newest-first and flipped back to chronological. (Taking the oldest 40 was
+  // the silent "context bleed": in long chats the model saw the conversation's
+  // opening but lost every recent turn.)
   const { data: historyRows } = await admin
     .from("chat_messages")
     .select("role, content")
     .eq("trip_id", trip.id)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(40);
 
-  const history = (historyRows ?? []) as ChatRow[];
+  const history = ((historyRows ?? []) as ChatRow[]).reverse();
   const isFirstMessage = history.length === 0;
 
   // Learn preferences from this message and persist any new ones.

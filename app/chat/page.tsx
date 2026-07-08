@@ -85,13 +85,15 @@ export default async function ChatPage({
       const requested = (await searchParams).trip;
       if (typeof requested === "string" && trips.some((t) => t.id === requested)) {
         activeTripId = requested;
+        // Latest 200, flipped back to chronological — same direction fix as
+        // the model window: a long chat must show its newest messages.
         const { data } = await admin
           .from("chat_messages")
           .select("role, content, created_at")
           .eq("trip_id", requested)
-          .order("created_at", { ascending: true })
+          .order("created_at", { ascending: false })
           .limit(200);
-        initialMessages = (data ?? []) as Message[];
+        initialMessages = ((data ?? []) as Message[]).reverse();
       }
     }
   } catch (err) {
