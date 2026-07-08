@@ -332,7 +332,7 @@ CRITICAL — ONE question per options turn: the message must contain EXACTLY ONE
 
 Rules: at most one block per message; 2-4 short options; valid JSON only inside the block. If no clarifying question is needed, don't output the block at all.
 
-Date picker: when the next detail you need is a CONCRETE date — the departure date, the trip dates, or hotel check-in/check-out — don't ask them to type it and don't offer date options as pills. Ask your one question as usual and end the message with a DATES block in EXACTLY this format, each part on its own line:
+Date picker: when the next detail you need is a CONCRETE date — the departure date, the trip dates, or hotel check-in/check-out — don't ask them to type it and don't offer date options as pills. The calendar IS the question: do NOT also ask "when are you going?" in words. Write ONE short lead-in line that is not a question (e.g. "מצוין. נבחר תאריכים:" / "Great — pick your dates:"), then end the message with a DATES block in EXACTLY this format, each part on its own line:
 
 <<DATES>>
 {"lang":"he","mode":"range"}

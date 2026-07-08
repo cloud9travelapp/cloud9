@@ -426,18 +426,25 @@ export default function ChatClient({
                 }
               }
               const isLast = i === messages.length - 1;
+              // A message that is ONLY a block (no lead-in text) renders just
+              // its block — no empty bubble stuck on the thinking indicator.
+              const hasBlock = !!(options || flights || stays || dates);
               return (
                 <div key={i} className="msg-enter flex flex-col items-start pt-2">
-                  <CloudBubble>
-                    {text ? (
-                      <span className="whitespace-pre-wrap">{text}</span>
-                    ) : (
-                      <LoadingDots />
-                    )}
-                  </CloudBubble>
-                  <span className="mt-1.5 px-1 text-[11px] text-c-muted">
-                    {formatTime(m.created_at)}
-                  </span>
+                  {text || !hasBlock ? (
+                    <>
+                      <CloudBubble>
+                        {text ? (
+                          <span className="whitespace-pre-wrap">{text}</span>
+                        ) : (
+                          <LoadingDots />
+                        )}
+                      </CloudBubble>
+                      <span className="mt-1.5 px-1 text-[11px] text-c-muted">
+                        {formatTime(m.created_at)}
+                      </span>
+                    </>
+                  ) : null}
                   {options && isLast && !isStreaming ? (
                     <QuickReplyPills
                       options={options}
