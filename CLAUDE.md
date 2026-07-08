@@ -5,7 +5,8 @@
 AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · NextAuth v5 (Google → Supabase) · Anthropic SDK (claude-sonnet-5 concierge, claude-haiku-4-5 namer). Repo `cloud9travelapp/cloud9`, deploys to Vercel from `main`. Mock providers need no env vars.
 
 ## Architecture (key patterns)
-- **Chat**: streaming route `app/api/chat/route.ts`. The system prompt IS the concierge's behavior spec. Tool round-trip loop supports multiple tools; auth-gated; saves to Supabase.
+- **Chat**: streaming route `app/api/chat/route.ts`. The system prompt IS the concierge's behavior spec. Tool round-trip loop supports multiple tools; auth-gated; saves to Supabase. Model history window = the LATEST 40 messages (desc + reverse — taking the oldest was the "context bleed" bug; same for the 200-message display window in `app/chat/page.tsx`).
+- **Trip titles**: `deriveTripTitle` (haiku) runs each turn — returns a title covering ALL destinations ("Japan & Korea") or KEEP. A user rename (pencil in the sidebar → `PATCH /api/trips/[id]`) sets `name_is_custom`, which locks the title against auto-updates. Both paths degrade gracefully if the `name_is_custom` column is missing.
 - **Reply language is computed, never model-inferred**: `lib/language.ts` decides each turn's language (word-dominance of the latest user message; place/brand names don't flip it; ambiguous → conversation's established language; new+ambiguous → Hebrew, the onboarding-preference seam) and the route injects it as a hard per-turn directive covering pre-tool notes, tool summaries, and block strings. Don't add prompt language rules that re-infer from "the user's message" — that was the root cause of the mixed-language bugs.
 - **Provider-agnostic search** (real provider = one-file swap): `lib/flights/*` (`search_flights`) and `lib/stays/*` (`search_stays`). Each = types + a `searchX` switch on `X_PROVIDER` env (default `"mock"`, exports `IS_MOCK_*`) + a seeded mock. Don't change existing provider signatures.
 - **Delimiter blocks**: the model appends ONE `<<OPTIONS>> | <<FLIGHTS>> | <<STAYS>> … <<END>>` block per message. Frontend `components/chat/chat-client.tsx` parses via `displayText` (strips from the first `<<`, so raw blocks never leak) + tolerant `blockRaw`. Card views live in `components/chat/message-parts.tsx` (shared by the real chat AND the landing demo, so they can't drift). Shared `CardSelect` action posts a structured choice as the user's message.
@@ -13,6 +14,7 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - **Brand**: `components/brand/` (cloud mark + `Lockup`); favicon `app/icon.svg` + `app/apple-icon.tsx`; social image `app/opengraph-image.tsx` (fixed sunset palette).
 
 ## Recently shipped
+- **Trip-integrity round (2026-07-08 pm)** — latest-40 history window (context-bleed root cause); offers-never-text universal card rule + one-leg-at-a-time for multi-destination stays; multi-destination auto-titles with custom-rename lock; live night count on the calendar + mismatch cross-check; open-pieces tracking (circle back to deferred flights/stays); trip rename UI + `PATCH /api/trips/[id]`.
 - **Language & behavior round (2026-07-08)** — deterministic reply language (see Architecture); calendar sends with a non-question lead-in (block-only messages render without an empty bubble); user-facing dates are DD-MM-YYYY day-first (tools stay ISO); pills for real choices carry the actual alternatives (never Yes/No); a decline redirects instead of closing the conversation.
 - **Date-picker block** — `<<DATES>>` block (`{"lang","mode":"single"|"range","min"?,"max"?}`) → `DateCalendar` in `message-parts.tsx`: phase-tokened month calendar, he/en via `Intl`, RTL-aware, past dates unselectable (min clamped to today client-side), Confirm posts `בחרתי תאריכים: X עד Y` / `Selected dates: X to Y`. Only actionable on the latest message (like pills). Prompt: calendar for concrete dates, OPTIONS pills for vague timing.
 - **Stay agent** — hotel search mirroring flights (mock provider, `StayCard`, he/en localized via neutral keys).
@@ -21,6 +23,7 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - **Brand system** — mark, lockups (horizontal for header, stacked for og), living float (accent-bound), favicon + og image.
 
 ## Open TODOs (details in `memory/`)
+- Supabase migration pending: `alter table trips add column if not exists name_is_custom boolean not null default false;` (locks custom titles; everything works without it, but auto-titling may overwrite renames until it runs).
 - RTL/LTR by user language preference (build with onboarding).
 - Room selection within a stay (needs the real stay provider).
 - Automated tests for critical flows (pre-launch, deliberate task).
