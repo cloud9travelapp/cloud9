@@ -15,22 +15,34 @@ export const maxDuration = 60;
 
 type ChatRow = { role: "user" | "assistant"; content: string };
 
-/** Ask a cheap model for the destination named in a message (or NONE). */
-async function extractDestination(message: string): Promise<string | null> {
+/**
+ * Ask a cheap model for an updated trip title covering ALL of the trip's
+ * destinations ("Japan & Korea"), given the current title and the latest
+ * message — or null when nothing should change (it answers KEEP).
+ */
+async function deriveTripTitle(
+  currentTitle: string,
+  message: string,
+): Promise<string | null> {
   try {
     const res = await getAnthropic().messages.create({
       model: NAMER_MODEL,
-      max_tokens: 16,
+      max_tokens: 24,
       system:
-        "You name travel trips. From the user's message, extract the single destination they want to visit — a country or city. Reply with ONLY that place name in English, capitalized, nothing else. If there is no clear destination, reply with exactly NONE.",
-      messages: [{ role: "user", content: message }],
+        'You title travel trips. Given a trip\'s current title and the traveler\'s latest message, reply with ONLY the updated title: the trip\'s destination(s) in English, up to three, joined by " & " (e.g. "Japan & Korea", "Rome & Florence", "Greece"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. If the latest message does not clearly add or change the trip\'s destinations — or no destination is known yet — reply with exactly KEEP.',
+      messages: [
+        {
+          role: "user",
+          content: `Current title: ${currentTitle}\nTraveler's message: ${message}`,
+        },
+      ],
     });
     const block = res.content.find((b) => b.type === "text");
     const text = block && block.type === "text" ? block.text.trim() : "";
-    if (!text || text.toUpperCase() === "NONE" || text.length > 40) return null;
+    if (!text || text.toUpperCase() === "KEEP" || text.length > 48) return null;
     return text;
   } catch (err) {
-    console.error("Trip naming failed:", err);
+    console.error("Trip titling failed:", err);
     return null;
   }
 }
@@ -501,13 +513,32 @@ ${
           if (error) console.error("Failed to save assistant message:", error.message);
         }
 
-        // Auto-name the trip from the first destination the traveler mentions.
-        if (trip.name === "New Trip") {
-          const destination = await extractDestination(message);
-          if (destination) {
+        // Keep the trip's title tracking its destinations ("Japan & Korea"),
+        // unless the traveler renamed it themselves (name_is_custom).
+        let nameIsCustom = false;
+        try {
+          const { data, error } = await admin
+            .from("trips")
+            .select("name_is_custom")
+            .eq("id", trip.id)
+            .single();
+          if (!error) {
+            nameIsCustom =
+              (data as { name_is_custom?: boolean } | null)?.name_is_custom ===
+              true;
+          }
+        } catch {
+          /* column not migrated yet — treat every name as auto-managed */
+        }
+        if (!nameIsCustom) {
+          const title = await deriveTripTitle(
+            trip.name === "New Trip" ? "(none yet)" : trip.name,
+            message,
+          );
+          if (title && title !== trip.name) {
             await admin
               .from("trips")
-              .update({ name: destination, updated_at: new Date().toISOString() })
+              .update({ name: title, updated_at: new Date().toISOString() })
               .eq("id", trip.id);
           }
         }

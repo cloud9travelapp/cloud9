@@ -50,15 +50,30 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const { data, error } = await admin
+  // name_is_custom locks the title against the auto-namer. If the column
+  // isn't migrated yet, fall back to a plain rename so the feature still works.
+  let result = await admin
     .from("trips")
-    .update({ name, updated_at: new Date().toISOString() })
+    .update({
+      name,
+      name_is_custom: true,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id)
     .eq("user_id", user.id)
     .select("id, name")
     .single();
-  if (error || !data) {
+  if (result.error) {
+    result = await admin
+      .from("trips")
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select("id, name")
+      .single();
+  }
+  if (result.error || !result.data) {
     return Response.json({ error: "Trip not found" }, { status: 404 });
   }
-  return Response.json({ id: data.id, name: data.name });
+  return Response.json({ id: result.data.id, name: result.data.name });
 }
