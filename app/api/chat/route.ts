@@ -17,23 +17,23 @@ type ChatRow = { role: "user" | "assistant"; content: string };
 
 /**
  * Ask a cheap model for an updated trip title covering ALL of the trip's
- * destinations ("Japan & Korea"), given the current title and the latest
- * message — or null when nothing should change (it answers KEEP).
+ * destinations ("Japan & Korea"), given the current title and the traveler's
+ * recent message(s) — or null when nothing should change (it answers KEEP).
  */
 async function deriveTripTitle(
   currentTitle: string,
-  message: string,
+  signal: string,
 ): Promise<string | null> {
   try {
     const res = await getAnthropic().messages.create({
       model: NAMER_MODEL,
       max_tokens: 24,
       system:
-        'You title travel trips. Given a trip\'s current title and the traveler\'s latest message, reply with ONLY the updated title for the trip\'s destinations, in English. One destination: its name ("Greece"). Two: both names joined by " & " ("Zagreb & Ljubljana"). Three or more: a natural regional name when one clearly covers them ("Balkan Trip", "Scandinavia"); otherwise the first two names + " & more" ("Zagreb, Ljubljana & more"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. If the latest message does not clearly add or change the trip\'s destinations — or no destination is known yet — reply with exactly KEEP.',
+        'You title travel trips. Given a trip\'s current title and the traveler\'s recent message(s), reply with ONLY the updated title for the trip\'s destinations, in English. One destination: its name ("Greece"). Two: both names joined by " & " ("Zagreb & Ljubljana"). Three or more: a natural regional name when one clearly covers them ("Balkan Trip", "Scandinavia"); otherwise the first two names + " & more" ("Zagreb, Ljubljana & more"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. Reply with exactly KEEP only when the message(s) neither name a trip destination missing from the current title nor change the existing ones.',
       messages: [
         {
           role: "user",
-          content: `Current title: ${currentTitle}\nTraveler's message: ${message}`,
+          content: `Current title: ${currentTitle}\nTraveler's recent message(s):\n${signal}`,
         },
       ],
     });
@@ -556,9 +556,21 @@ ${
           /* column not migrated yet — treat every name as auto-managed */
         }
         if (!nameIsCustom) {
+          // While the trip is unnamed, feed the titler the recent user
+          // messages too — one missed first turn must not stick forever.
+          const signal =
+            trip.name === "New Trip"
+              ? [
+                  ...history
+                    .filter((m) => m.role === "user")
+                    .slice(-5)
+                    .map((m) => m.content.slice(0, 300)),
+                  message,
+                ].join("\n")
+              : message;
           const title = await deriveTripTitle(
             trip.name === "New Trip" ? "(none yet)" : trip.name,
-            message,
+            signal,
           );
           if (title && title !== trip.name) {
             await admin
