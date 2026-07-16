@@ -14,6 +14,8 @@ export type StayQuery = {
   guests?: number; // default 2
   rooms?: number; // default 1
   budgetLevel?: BudgetLevel; // default "mid"
+  latitude?: number; // destination city center (real providers search by geo)
+  longitude?: number;
 };
 
 export type StayOffer = {
@@ -22,9 +24,9 @@ export type StayOffer = {
   type: StayType;
   area: string; // neighbourhood / area proper noun, e.g. "Trastevere"
   stars: number; // 1–5; 0 = category/unrated
-  amenities: string[]; // neutral keys, e.g. ["pool","breakfast","seaview"]
-  distanceKey: string; // POI key: beach | center | oldTown | station | park
-  distanceMinutes: number; // walking minutes to that POI
+  amenities: string[]; // neutral keys, e.g. ["pool","breakfast","seaview"]; may be empty (availability-only providers)
+  distanceKey?: string; // POI key: beach | center | oldTown | station | park
+  distanceMinutes?: number; // walking minutes to that POI
   pricePerNight: number;
   totalPrice: number; // pricePerNight × nights × rooms
   currency: string;

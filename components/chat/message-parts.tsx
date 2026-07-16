@@ -571,20 +571,25 @@ export function StayCard({
         </div>
       </div>
 
-      {/* stars + distance */}
-      <div dir="auto" className="mt-1.5 flex items-center gap-2 text-xs text-c-muted">
-        {offer.stars > 0 ? (
-          <span
-            className="flex-none text-c-accent"
-            aria-label={L.stars(offer.stars)}
-          >
-            {"★".repeat(offer.stars)}
-          </span>
-        ) : null}
-        <span className="truncate">
-          {L.distance(offer.distanceKey, offer.distanceMinutes)}
-        </span>
-      </div>
+      {/* stars + distance (distance only when the provider supplies it) */}
+      {offer.stars > 0 ||
+      (offer.distanceKey && typeof offer.distanceMinutes === "number") ? (
+        <div dir="auto" className="mt-1.5 flex items-center gap-2 text-xs text-c-muted">
+          {offer.stars > 0 ? (
+            <span
+              className="flex-none text-c-accent"
+              aria-label={L.stars(offer.stars)}
+            >
+              {"★".repeat(offer.stars)}
+            </span>
+          ) : null}
+          {offer.distanceKey && typeof offer.distanceMinutes === "number" ? (
+            <span className="truncate">
+              {L.distance(offer.distanceKey, offer.distanceMinutes)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* amenity highlights */}
       {offer.amenities.length ? (
