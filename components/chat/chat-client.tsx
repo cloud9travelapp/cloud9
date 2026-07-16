@@ -503,7 +503,13 @@ export default function ChatClient({
                       onSelect={(o) => void send(o)}
                     />
                   ) : null}
-                  {flights ? (
+                  {/* Like the pills and the calendar, offer cards live only on
+                      the latest message: once the user picks (or says anything)
+                      they're gone — history keeps the agent's summary line and
+                      the user's selection message. "What did I see earlier?" is
+                      a conversational re-search, and stale Select buttons can't
+                      post outdated choices. */}
+                  {flights && isLast && !isStreaming ? (
                     <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
                       {flights.offers.map((offer) => (
                         <FlightCard
@@ -516,7 +522,7 @@ export default function ChatClient({
                       ))}
                     </div>
                   ) : null}
-                  {stays ? (
+                  {stays && isLast && !isStreaming ? (
                     <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
                       {stays.offers.map((offer) => (
                         <StayCard
