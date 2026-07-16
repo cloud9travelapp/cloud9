@@ -30,7 +30,7 @@ function signature(apiKey: string, secret: string): string {
 }
 
 // Minimal slice of the availability response we consume.
-type HotelbedsHotel = {
+export type HotelbedsHotel = {
   code?: number;
   name?: string;
   categoryName?: string;
@@ -43,12 +43,12 @@ type HotelbedsAvailability = {
   hotels?: { hotels?: HotelbedsHotel[] };
 };
 
-function starsFrom(categoryName?: string): number {
+export function starsFrom(categoryName?: string): number {
   const m = /([1-5])/.exec(categoryName ?? "");
   return m ? Number(m[1]) : 0;
 }
 
-function typeFrom(categoryName?: string): StayType {
+export function typeFrom(categoryName?: string): StayType {
   const c = (categoryName ?? "").toUpperCase();
   if (c.includes("APART")) return "apartment";
   if (c.includes("HOSTEL")) return "hostel";
@@ -64,7 +64,7 @@ function nightsBetween(checkIn: string, checkOut: string): number {
   return Math.max(1, Math.round((b - a) / 86400000));
 }
 
-function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer[] {
+export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer[] {
   const nights = nightsBetween(query.checkIn, query.checkOut);
   const rooms = Math.max(1, query.rooms ?? 1);
   const offers: StayOffer[] = [];
@@ -88,7 +88,7 @@ function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer[] {
 
 /** Budget bands filter locally — never as extra API calls. Falls back to the
  *  unfiltered list when a band would leave fewer than 3 options. */
-function filterForBudget(offers: StayOffer[], budget?: BudgetLevel): StayOffer[] {
+export function filterForBudget(offers: StayOffer[], budget?: BudgetLevel): StayOffer[] {
   if (!budget) return offers;
   const inBand = offers.filter((o) =>
     budget === "budget" ? o.stars <= 3 : budget === "luxury" ? o.stars >= 4 : o.stars === 3 || o.stars === 4,
