@@ -1,5 +1,6 @@
 import type { StayOffer, StayQuery } from "./types";
 import { mockSearchStays } from "./mock";
+import { hotelbedsSearchStays } from "./hotelbeds";
 
 const STAY_PROVIDER = process.env.STAY_PROVIDER || "mock";
 
@@ -17,8 +18,8 @@ export const IS_MOCK_STAY_PROVIDER = STAY_PROVIDER === "mock";
  */
 export async function searchStays(query: StayQuery): Promise<StayOffer[]> {
   switch (STAY_PROVIDER) {
-    // case "hotelbeds":
-    //   return hotelbedsSearchStays(query);
+    case "hotelbeds":
+      return hotelbedsSearchStays(query);
     // case "amadeus":
     //   return amadeusSearchStays(query);
     case "mock":
