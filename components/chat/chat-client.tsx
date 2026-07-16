@@ -342,6 +342,9 @@ export default function ChatClient({
       } else {
         router.refresh();
       }
+      // The auto-title lands just AFTER the response closes (after() in the
+      // route) — one delayed refresh picks it up without user action.
+      setTimeout(() => router.refresh(), 2500);
     }
   }
 

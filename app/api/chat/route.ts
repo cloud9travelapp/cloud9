@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { after } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
@@ -538,51 +539,57 @@ ${
           if (error) console.error("Failed to save assistant message:", error.message);
         }
 
-        // Keep the trip's title tracking its destinations ("Japan & Korea"),
-        // unless the traveler renamed it themselves (name_is_custom).
-        let nameIsCustom = false;
-        try {
-          const { data, error } = await admin
-            .from("trips")
-            .select("name_is_custom")
-            .eq("id", trip.id)
-            .single();
-          if (!error) {
-            nameIsCustom =
-              (data as { name_is_custom?: boolean } | null)?.name_is_custom ===
-              true;
-          }
-        } catch {
-          /* column not migrated yet — treat every name as auto-managed */
-        }
-        if (!nameIsCustom) {
-          // While the trip is unnamed, feed the titler the recent user
-          // messages too — one missed first turn must not stick forever.
-          const signal =
-            trip.name === "New Trip"
-              ? [
-                  ...history
-                    .filter((m) => m.role === "user")
-                    .slice(-5)
-                    .map((m) => m.content.slice(0, 300)),
-                  message,
-                ].join("\n")
-              : message;
-          const title = await deriveTripTitle(
-            trip.name === "New Trip" ? "(none yet)" : trip.name,
-            signal,
-          );
-          if (title && title !== trip.name) {
-            await admin
-              .from("trips")
-              .update({ name: title, updated_at: new Date().toISOString() })
-              .eq("id", trip.id);
-          }
-        }
-
         controller.close();
       }
     },
+  });
+
+  // Title bookkeeping depends only on the incoming message + trip (never on
+  // the reply), so it runs entirely AFTER the response closes — it used to
+  // block stream close by a Supabase read + a haiku call on every turn.
+  after(async () => {
+    try {
+      let nameIsCustom = false;
+      try {
+        const { data, error } = await admin
+          .from("trips")
+          .select("name_is_custom")
+          .eq("id", trip.id)
+          .single();
+        if (!error) {
+          nameIsCustom =
+            (data as { name_is_custom?: boolean } | null)?.name_is_custom ===
+            true;
+        }
+      } catch {
+        /* column not migrated yet — treat every name as auto-managed */
+      }
+      if (nameIsCustom) return;
+      // While the trip is unnamed, feed the titler the recent user messages
+      // too — one missed first turn must not stick forever.
+      const signal =
+        trip.name === "New Trip"
+          ? [
+              ...history
+                .filter((m) => m.role === "user")
+                .slice(-5)
+                .map((m) => m.content.slice(0, 300)),
+              message,
+            ].join("\n")
+          : message;
+      const title = await deriveTripTitle(
+        trip.name === "New Trip" ? "(none yet)" : trip.name,
+        signal,
+      );
+      if (title && title !== trip.name) {
+        await admin
+          .from("trips")
+          .update({ name: title, updated_at: new Date().toISOString() })
+          .eq("id", trip.id);
+      }
+    } catch (err) {
+      console.error("Trip titling failed:", err);
+    }
   });
 
   return new Response(stream, {
