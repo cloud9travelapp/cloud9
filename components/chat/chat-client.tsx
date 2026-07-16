@@ -203,6 +203,44 @@ function splitDates(content: string): {
   }
 }
 
+/**
+ * Purely-visual smooth reveal for the streaming assistant message. The network
+ * text is the target; the shown slice catches up a few characters per frame,
+ * draining any backlog with a ~300ms time constant so it never trails the
+ * stream noticeably — and the parent snaps to the plain full text the moment
+ * the stream ends. Honors prefers-reduced-motion (shows text as it arrives).
+ */
+export function StreamedText({ text }: { text: string }) {
+  const [shown, setShown] = useState(0);
+  const targetRef = useRef(text);
+  targetRef.current = text;
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(Number.MAX_SAFE_INTEGER);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      setShown((s) => {
+        const t = targetRef.current.length;
+        return s >= t ? s : Math.min(t, s + Math.max(1, Math.ceil((t - s) / 18)));
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  let cut = Math.min(shown, text.length);
+  // Never split a surrogate pair (emoji) at the reveal edge.
+  if (cut > 0 && cut < text.length) {
+    const c = text.charCodeAt(cut - 1);
+    if (c >= 0xd800 && c <= 0xdbff) cut -= 1;
+  }
+  return <span className="whitespace-pre-wrap">{text.slice(0, cut)}</span>;
+}
+
 export default function ChatClient({
   initialMessages,
   firstName,
@@ -435,7 +473,11 @@ export default function ChatClient({
                     <>
                       <CloudBubble>
                         {text ? (
-                          <span className="whitespace-pre-wrap">{text}</span>
+                          isLast && isStreaming ? (
+                            <StreamedText text={text} />
+                          ) : (
+                            <span className="whitespace-pre-wrap">{text}</span>
+                          )
                         ) : (
                           <LoadingDots />
                         )}
