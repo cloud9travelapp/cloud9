@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
 import { detectPreferences, mergePreferences } from "@/lib/preferences";
 import { detectReplyLanguage } from "@/lib/language";
+import { sanitizeTripTitle } from "@/lib/trip-title";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
 import { searchStays, IS_MOCK_STAY_PROVIDER } from "@/lib/stays/provider";
@@ -30,7 +31,7 @@ async function deriveTripTitle(
       model: NAMER_MODEL,
       max_tokens: 24,
       system:
-        'You title travel trips. Given a trip\'s current title and the traveler\'s recent message(s), reply with ONLY the updated title for the trip\'s destinations, in English. One destination: its name ("Greece"). Two: both names joined by " & " ("Zagreb & Ljubljana"). Three or more: a natural regional name when one clearly covers them ("Balkan Trip", "Scandinavia"); otherwise the first two names + " & more" ("Zagreb, Ljubljana & more"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. Reply with exactly KEEP only when the message(s) neither name a trip destination missing from the current title nor change the existing ones.',
+        'You title travel trips. Given a trip\'s current title and the traveler\'s recent message(s), reply with ONLY the updated title for the trip\'s destinations, in English. Each destination is its SHORTEST natural name — "Budva" or "Montenegro", NEVER both and never any "City, Country" form; prefer the form the traveler used. One destination: its name ("Greece"). Two: both names joined by " & " ("Zagreb & Ljubljana"). Three or more: a natural regional name when one clearly covers them ("Balkan Trip", "Scandinavia"); otherwise the first two names + " & more" ("Zagreb, Ljubljana & more") — no commas anywhere else. A destination is a place the traveler STAYS or VISITS. The departure/origin city ("טיסה מתל אביב ל...", "flying from London") is NEVER a destination and NEVER appears in the title, no matter how often it is mentioned. Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Reply with exactly KEEP only when the message(s) neither name a trip destination missing from the current title nor change the existing ones.',
       messages: [
         {
           role: "user",
@@ -39,9 +40,8 @@ async function deriveTripTitle(
       ],
     });
     const block = res.content.find((b) => b.type === "text");
-    const text = block && block.type === "text" ? block.text.trim() : "";
-    if (!text || text.toUpperCase() === "KEEP" || text.length > 48) return null;
-    return text;
+    const text = block && block.type === "text" ? block.text : "";
+    return sanitizeTripTitle(text);
   } catch (err) {
     console.error("Trip titling failed:", err);
     return null;
