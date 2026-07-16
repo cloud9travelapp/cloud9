@@ -198,6 +198,7 @@ async function runStaySearch(input: unknown): Promise<string> {
 }
 
 export async function POST(request: Request) {
+  const t0 = Date.now();
   const session = await auth();
   if (!session?.user?.googleId) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
@@ -251,19 +252,34 @@ export async function POST(request: Request) {
   }
 
   // Resolve the trip: use the one the client sent (must belong to the user), or
-  // start a fresh one for a brand-new conversation.
+  // start a fresh one for a brand-new conversation. For an existing trip, the
+  // ownership check and the history load are independent — run them in
+  // parallel (history is only USED after the ownership check passes). History
+  // = the LATEST 40 messages, fetched newest-first and flipped back to
+  // chronological (taking the oldest 40 was the silent "context bleed"). A
+  // brand-new trip has no history, so that path skips the query entirely.
   let trip: { id: string; name: string };
+  let history: ChatRow[];
   if (rawTripId) {
-    const { data } = await admin
-      .from("trips")
-      .select("id, name")
-      .eq("id", rawTripId)
-      .eq("user_id", user.id)
-      .single();
-    if (!data) {
+    const [tripRes, historyRes] = await Promise.all([
+      admin
+        .from("trips")
+        .select("id, name")
+        .eq("id", rawTripId)
+        .eq("user_id", user.id)
+        .single(),
+      admin
+        .from("chat_messages")
+        .select("role, content")
+        .eq("trip_id", rawTripId)
+        .order("created_at", { ascending: false })
+        .limit(40),
+    ]);
+    if (!tripRes.data) {
       return Response.json({ error: "Trip not found" }, { status: 404 });
     }
-    trip = data;
+    trip = tripRes.data;
+    history = ((historyRes.data ?? []) as ChatRow[]).reverse();
   } else {
     const { data, error } = await admin
       .from("trips")
@@ -275,38 +291,31 @@ export async function POST(request: Request) {
       return Response.json({ error: "Could not start a trip" }, { status: 500 });
     }
     trip = data;
+    history = [];
   }
 
-  // Prior conversation for THIS trip — the LATEST 40 messages, fetched
-  // newest-first and flipped back to chronological. (Taking the oldest 40 was
-  // the silent "context bleed": in long chats the model saw the conversation's
-  // opening but lost every recent turn.)
-  const { data: historyRows } = await admin
-    .from("chat_messages")
-    .select("role, content")
-    .eq("trip_id", trip.id)
-    .order("created_at", { ascending: false })
-    .limit(40);
-
-  const history = ((historyRows ?? []) as ChatRow[]).reverse();
   const isFirstMessage = history.length === 0;
 
-  // Learn preferences from this message and persist any new ones.
+  // Learn preferences from this message; persist new ones and save the user's
+  // message in parallel — they're independent writes.
   const existingPrefs: string[] = Array.isArray(user.preferences)
     ? (user.preferences as string[])
     : [];
   const merged = mergePreferences(existingPrefs, detectPreferences(message));
+  const writes: PromiseLike<unknown>[] = [
+    admin.from("chat_messages").insert({
+      user_id: user.id,
+      trip_id: trip.id,
+      role: "user",
+      content: message,
+    }),
+  ];
   if (merged.length !== existingPrefs.length) {
-    await admin.from("users").update({ preferences: merged }).eq("id", user.id);
+    writes.push(
+      admin.from("users").update({ preferences: merged }).eq("id", user.id),
+    );
   }
-
-  // Save the user's message before we start generating.
-  await admin.from("chat_messages").insert({
-    user_id: user.id,
-    trip_id: trip.id,
-    role: "user",
-    content: message,
-  });
+  await Promise.all(writes);
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "there";
   const prefLine = merged.length
@@ -327,7 +336,11 @@ export async function POST(request: Request) {
       : `the language of the traveler's latest message — NOT Hebrew. Their message: «${quotedMessage}». If that message is English, or you cannot tell which language it is, write English`;
 
   const today = new Date().toISOString().slice(0, 10);
-  const system = `You're the Cloud9 Concierge — ${firstName}'s personal travel professional. Efficient, knowledgeable, and courteous, with a light, understated warmth. You work the way a skilled human travel agent does: get to the point, ask precise questions, deliver results.
+  // The static block is byte-identical across a user's turns (and across the
+  // hops of one turn), so it — plus the tool definitions before it — is served
+  // from the Anthropic prompt cache; only the small dynamic tail below is
+  // reprocessed each turn. Per-turn text must NEVER be added here.
+  const systemStatic = `You're the Cloud9 Concierge — ${firstName}'s personal travel professional. Efficient, knowledgeable, and courteous, with a light, understated warmth. You work the way a skilled human travel agent does: get to the point, ask precise questions, deliver results.
 
 Who you're talking to: ${firstName}. ${prefLine}
 
@@ -336,7 +349,6 @@ Today's date is ${today}. Resolve every date the user gives to a real, FUTURE da
 How you talk:
 - Sound like a skilled human travel professional — efficient, clear, courteous. Not stiff or corporate, but not a chatty friend either.
 - Light warmth only. A brief, courteous acknowledgement is fine when it fits — "Certainly", "Of course", "Good choice" (or "בהחלט", "בסדר גמור", "בחירה טובה" in Hebrew). No slang, no "Love that", no emojis, no exclamation-driven chatter — in either language.
-- THIS TURN'S REPLY LANGUAGE: ${langDirective}. This is already decided from their latest message — do NOT re-decide it from the conversation, from your own earlier replies, or from tool results (tool results arrive as English JSON; that changes nothing). EVERY word you write this turn is in that language: the reply itself, any brief note before a tool call (e.g. "רגע, בודק אפשרויות..." when the turn is Hebrew — never "Let me check flights..."), the summary after a tool result, and every string inside a block (the "question", every option, every label). One message is ONE language from its first word to its last — commit to the language before you write the first word and never switch mid-message.
 - Be concise and results-oriented. Lead with the answer or the single detail you still need; skip filler and pleasantries beyond a brief courtesy.
 - Never repeat their words back at them. If they say "Rome", don't answer "So you'd like to visit Rome" — acknowledge briefly and move forward.
 - Plain, professional language in both languages — clear, not flowery, not high-register.
@@ -453,13 +465,22 @@ You can use BOTH tools in one conversation — for example find a flight, then a
 
 Offers are NEVER text, in any context. Every time a flight or stay offer appears in your message — first presentation, re-presentation ("show me those again"), comparison, recommendation, or a trip summary/wrap-up — it is presented as its card block. You may reference specific offers in text ONLY in a message that also carries their card block. Naming an offer with its price in plain text is always a bug — including "best value" or "I'd recommend" phrasings: recommend by pointing at a card you are showing in that same message. If a summary would mention options for a piece the user hasn't chosen yet, mark that piece as still open and show (or offer to show) the cards instead of describing them.
 
-Offers OWN their message: a message that presents search results is your one short summary sentence plus the card block, and it ENDS there. Never append a follow-up question — and never an OPTIONS block — after offer cards (one block per message; if the offers and a question compete for the slot, the offers ALWAYS win). Ask your next question in your NEXT turn, after the user reacts to the cards.
+Offers OWN their message: a message that presents search results is your one short summary sentence plus the card block, and it ENDS there. Never append a follow-up question — and never an OPTIONS block — after offer cards (one block per message; if the offers and a question compete for the slot, the offers ALWAYS win). Ask your next question in your NEXT turn, after the user reacts to the cards.`;
+
+  // Per-turn directives live in a separate small block so they can't break
+  // the static block's cacheability.
+  const systemDynamic = `THIS TURN'S REPLY LANGUAGE: ${langDirective}. This is already decided from their latest message — do NOT re-decide it from the conversation, from your own earlier replies, or from tool results (tool results arrive as English JSON; that changes nothing). EVERY word you write this turn is in that language: the reply itself, any brief note before a tool call (e.g. "רגע, בודק אפשרויות..." when the turn is Hebrew — never "Let me check flights..."), the summary after a tool result, and every string inside a block (the "question", every option, every label). One message is ONE language from its first word to its last — commit to the language before you write the first word and never switch mid-message.
 
 ${
     isFirstMessage
       ? "First message: a brief, professional greeting as the Cloud9 Concierge, then ask where they'd like to go. Nothing more."
       : "Returning traveler: a short, courteous greeting by name, draw on what you know of their preferences, and skip the introductions."
   }`;
+
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: "text", text: systemStatic, cache_control: { type: "ephemeral" } },
+    { type: "text", text: systemDynamic },
+  ];
 
   const anthropicMessages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
@@ -468,6 +489,10 @@ ${
 
   const encoder = new TextEncoder();
   let assistantText = "";
+  // Turn timing → Vercel runtime logs: how long before the model was called,
+  // when the first visible token left, and the full turn duration.
+  const preModelMs = Date.now() - t0;
+  let firstTokenAt = 0;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -480,7 +505,7 @@ ${
             model: CONCIERGE_MODEL,
             max_tokens: 4096,
             thinking: { type: "disabled" },
-            system,
+            system: systemBlocks,
             tools: [FLIGHT_TOOL, STAY_TOOL],
             messages: anthropicMessages,
           });
@@ -490,6 +515,7 @@ ${
               event.type === "content_block_delta" &&
               event.delta.type === "text_delta"
             ) {
+              if (!firstTokenAt) firstTokenAt = Date.now();
               assistantText += event.delta.text;
               controller.enqueue(encoder.encode(event.delta.text));
             }
@@ -539,6 +565,11 @@ ${
           if (error) console.error("Failed to save assistant message:", error.message);
         }
 
+        console.log(
+          `chat timing: pre-model ${preModelMs}ms, first-token ${
+            firstTokenAt ? firstTokenAt - t0 : -1
+          }ms, total ${Date.now() - t0}ms`,
+        );
         controller.close();
       }
     },
