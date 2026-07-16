@@ -438,24 +438,31 @@ export default function ChatClient({
               }
 
               // Strip any special block from the display text, then decide
-              // whether to show quick-reply pills, flight cards, stay cards, or
-              // a date calendar below (mutually exclusive: one block per message).
-              const opt = splitOptions(m.content);
-              const options = opt.options;
-              let text = opt.text;
+              // whether to show flight cards, stay cards, quick-reply pills, or
+              // a date calendar below (mutually exclusive: one block per
+              // message). CARDS WIN TIES: offers are checked before options, so
+              // if a message ever carries both an offers block and an OPTIONS
+              // block, the cards render and the pills are dropped — never the
+              // reverse.
+              let options: string[] | null = null;
               let flights: FlightsPayload | null = null;
               let stays: StaysPayload | null = null;
               let dates: DatesPayload | null = null;
-              if (!options) {
-                const fl = splitFlights(m.content);
-                if (fl.flights) {
-                  text = fl.text;
-                  flights = fl.flights;
+              let text: string;
+              const fl = splitFlights(m.content);
+              if (fl.flights) {
+                text = fl.text;
+                flights = fl.flights;
+              } else {
+                const st = splitStays(m.content);
+                if (st.stays) {
+                  text = st.text;
+                  stays = st.stays;
                 } else {
-                  const st = splitStays(m.content);
-                  if (st.stays) {
-                    text = st.text;
-                    stays = st.stays;
+                  const opt = splitOptions(m.content);
+                  if (opt.options) {
+                    text = opt.text;
+                    options = opt.options;
                   } else {
                     const dt = splitDates(m.content);
                     text = dt.text;
