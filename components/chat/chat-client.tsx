@@ -12,13 +12,8 @@ import {
   FlightCard,
   StayCard,
   DateCalendar,
-  type FlightOfferView,
-  type FlightsPayload,
-  type StayOfferView,
-  type StaysPayload,
-  type DatesPayload,
-  type Lang,
 } from "./message-parts";
+import { parseAssistantMessage } from "@/lib/chat/blocks";
 import HeroDithering from "@/components/landing/hero-dithering";
 
 // Starter prompts shown on the empty state (interface language: English).
@@ -38,169 +33,6 @@ type Message = {
 function formatTime(iso?: string): string {
   const d = iso ? new Date(iso) : new Date();
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-// Assistant messages may carry ONE trailing special block (<<OPTIONS>>,
-// <<FLIGHTS>>, <<STAYS>> … <<END>>).
-//
-// For DISPLAY we strip everything from the first "<<" onward — bulletproof
-// against a complete marker, a partial marker still streaming in (e.g.
-// "<<FLIGH"), or a slightly-malformed one, so raw block content is NEVER shown.
-// For PARSING we match markers tolerantly (case- and inner-whitespace-
-// insensitive), so cards still render even if the model formats a marker oddly.
-function displayText(content: string): string {
-  const i = content.indexOf("<<");
-  return (i === -1 ? content : content.slice(0, i)).trimEnd();
-}
-
-function blockRaw(content: string, tag: string): string | null {
-  const open = new RegExp(`<<\\s*${tag}\\s*>>`, "i").exec(content);
-  if (!open) return null;
-  const rest = content.slice(open.index + open[0].length);
-  const end = /<<\s*END\s*>>/i.exec(rest);
-  if (!end) return null;
-  return rest.slice(0, end.index).trim();
-}
-
-/**
- * Split an assistant message into its display text and any quick-reply options.
- * Options are returned only when a complete, valid block parses; any failure
- * degrades to plain text. The display text never contains raw block markup.
- */
-function splitOptions(content: string): {
-  text: string;
-  options: string[] | null;
-} {
-  const text = displayText(content);
-  const raw = blockRaw(content, "OPTIONS");
-  if (raw === null) return { text, options: null };
-  try {
-    const parsed = JSON.parse(raw) as { options?: unknown };
-    if (!Array.isArray(parsed.options)) return { text, options: null };
-    const options = parsed.options
-      .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-      .slice(0, 4);
-    return { text, options: options.length ? options : null };
-  } catch {
-    return { text, options: null };
-  }
-}
-
-/**
- * Mirror of splitOptions for the <<FLIGHTS>> block. Accepts `{ lang, mock,
- * offers }` or a bare offers array. `lang` defaults to "en" unless exactly "he".
- * Any failure degrades to plain text; the display text never shows raw markup.
- */
-function splitFlights(content: string): {
-  text: string;
-  flights: FlightsPayload | null;
-} {
-  const text = displayText(content);
-  const raw = blockRaw(content, "FLIGHTS");
-  if (raw === null) return { text, flights: null };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    let mock = true;
-    let lang: Lang = "en";
-    let offersRaw: unknown;
-    if (Array.isArray(parsed)) {
-      offersRaw = parsed;
-    } else if (parsed && typeof parsed === "object") {
-      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
-      offersRaw = obj.offers;
-      mock = obj.mock !== false; // label unless explicitly false
-      lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
-    }
-    if (!Array.isArray(offersRaw)) return { text, flights: null };
-    const offers = offersRaw.filter((o): o is FlightOfferView => {
-      const x = o as Partial<FlightOfferView>;
-      return (
-        !!x &&
-        typeof x.airlineName === "string" &&
-        Array.isArray(x.segments) &&
-        x.segments.length > 0 &&
-        typeof x.price === "number"
-      );
-    });
-    if (!offers.length) return { text, flights: null };
-    return { text, flights: { mock, lang, offers: offers.slice(0, 8) } };
-  } catch {
-    return { text, flights: null };
-  }
-}
-
-/**
- * Mirror of splitFlights for the <<STAYS>> block. `lang` defaults to "en" unless
- * exactly "he". Any failure degrades to plain text; the display text never shows
- * raw markup.
- */
-function splitStays(content: string): {
-  text: string;
-  stays: StaysPayload | null;
-} {
-  const text = displayText(content);
-  const raw = blockRaw(content, "STAYS");
-  if (raw === null) return { text, stays: null };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    let mock = true;
-    let lang: Lang = "en";
-    let offersRaw: unknown;
-    if (Array.isArray(parsed)) {
-      offersRaw = parsed;
-    } else if (parsed && typeof parsed === "object") {
-      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
-      offersRaw = obj.offers;
-      mock = obj.mock !== false; // label unless explicitly false
-      lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
-    }
-    if (!Array.isArray(offersRaw)) return { text, stays: null };
-    const offers = offersRaw.filter((o): o is StayOfferView => {
-      const x = o as Partial<StayOfferView>;
-      return (
-        !!x &&
-        typeof x.name === "string" &&
-        typeof x.type === "string" &&
-        typeof x.pricePerNight === "number"
-      );
-    });
-    if (!offers.length) return { text, stays: null };
-    return { text, stays: { mock, lang, offers: offers.slice(0, 8) } };
-  } catch {
-    return { text, stays: null };
-  }
-}
-
-/**
- * Mirror of splitOptions for the <<DATES>> block. Any valid JSON object yields
- * a calendar (mode defaults to "range", lang to "en"; DateCalendar itself
- * clamps min/max to the future). Any failure degrades to plain text.
- */
-function splitDates(content: string): {
-  text: string;
-  dates: DatesPayload | null;
-} {
-  const text = displayText(content);
-  const raw = blockRaw(content, "DATES");
-  if (raw === null) return { text, dates: null };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { text, dates: null };
-    }
-    const obj = parsed as { lang?: unknown; mode?: unknown; min?: unknown; max?: unknown };
-    return {
-      text,
-      dates: {
-        lang: obj.lang === "he" ? "he" : "en", // default en unless exactly "he"
-        mode: obj.mode === "single" ? "single" : "range",
-        min: typeof obj.min === "string" ? obj.min : undefined,
-        max: typeof obj.max === "string" ? obj.max : undefined,
-      },
-    };
-  } catch {
-    return { text, dates: null };
-  }
 }
 
 /**
@@ -442,37 +274,10 @@ export default function ChatClient({
 
               // Strip any special block from the display text, then decide
               // whether to show flight cards, stay cards, quick-reply pills, or
-              // a date calendar below (mutually exclusive: one block per
-              // message). CARDS WIN TIES: offers are checked before options, so
-              // if a message ever carries both an offers block and an OPTIONS
-              // block, the cards render and the pills are dropped — never the
-              // reverse.
-              let options: string[] | null = null;
-              let flights: FlightsPayload | null = null;
-              let stays: StaysPayload | null = null;
-              let dates: DatesPayload | null = null;
-              let text: string;
-              const fl = splitFlights(m.content);
-              if (fl.flights) {
-                text = fl.text;
-                flights = fl.flights;
-              } else {
-                const st = splitStays(m.content);
-                if (st.stays) {
-                  text = st.text;
-                  stays = st.stays;
-                } else {
-                  const opt = splitOptions(m.content);
-                  if (opt.options) {
-                    text = opt.text;
-                    options = opt.options;
-                  } else {
-                    const dt = splitDates(m.content);
-                    text = dt.text;
-                    dates = dt.dates;
-                  }
-                }
-              }
+              // a date calendar below — the mutually-exclusive, cards-win-ties
+              // decision lives in lib/chat/blocks (unit-tested).
+              const { text, flights, stays, options, dates } =
+                parseAssistantMessage(m.content);
               const isLast = i === messages.length - 1;
               // A message that is ONLY a block (no lead-in text) renders just
               // its block — no empty bubble stuck on the thinking indicator.

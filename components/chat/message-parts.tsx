@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { CloudMarkClassic } from "@/components/brand/cloud-marks";
+import { dmy, isoDay, nightsBetween } from "@/lib/chat/dates";
 
 export type FlightSegmentView = {
   origin: string;
@@ -633,25 +634,6 @@ export function StayCard({
       ) : null}
     </div>
   );
-}
-
-/** Local calendar date as YYYY-MM-DD (NOT toISOString, which is UTC and can
- *  shift the day across midnight in some timezones). */
-function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** User-facing date: DD-MM-YYYY, day first. Internal values stay ISO. */
-function dmy(iso: string): string {
-  return `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
-}
-
-/** Whole nights between two ISO days (UTC-anchored so DST can't skew it). */
-function nightsBetween(startIso: string, endIso: string): number {
-  const a = Date.parse(`${startIso}T00:00:00Z`);
-  const b = Date.parse(`${endIso}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
-  return Math.round((b - a) / 86400000);
 }
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
