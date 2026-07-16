@@ -29,7 +29,7 @@ async function deriveTripTitle(
       model: NAMER_MODEL,
       max_tokens: 24,
       system:
-        'You title travel trips. Given a trip\'s current title and the traveler\'s latest message, reply with ONLY the updated title: the trip\'s destination(s) in English, up to three, joined by " & " (e.g. "Japan & Korea", "Rome & Florence", "Greece"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. If the latest message does not clearly add or change the trip\'s destinations — or no destination is known yet — reply with exactly KEEP.',
+        'You title travel trips. Given a trip\'s current title and the traveler\'s latest message, reply with ONLY the updated title for the trip\'s destinations, in English. One destination: its name ("Greece"). Two: both names joined by " & " ("Zagreb & Ljubljana"). Three or more: a natural regional name when one clearly covers them ("Balkan Trip", "Scandinavia"); otherwise the first two names + " & more" ("Zagreb, Ljubljana & more"). Keep destinations already in the current title unless the traveler drops or replaces them; add newly chosen ones. Use country names for international multi-city trips, city names otherwise. Never include the place they depart from. If the latest message does not clearly add or change the trip\'s destinations — or no destination is known yet — reply with exactly KEEP.',
       messages: [
         {
           role: "user",
