@@ -297,10 +297,15 @@ export async function POST(request: Request) {
   // The reply language is decided HERE, deterministically, once per turn —
   // never re-inferred by the model (see lib/language.ts for the policy).
   const replyLang = detectReplyLanguage(message, history);
+  // For non-Hebrew turns the directive quotes the message verbatim and makes
+  // English the deterministic fallback, so a one-word message ("Flight") in a
+  // Hebrew-heavy context can't be pulled back to Hebrew by momentum.
+  const quotedMessage =
+    message.length > 80 ? `${message.slice(0, 80)}…` : message;
   const langDirective =
     replyLang === "he"
       ? "Hebrew"
-      : "the language of the traveler's latest message — NOT Hebrew (English if they wrote English, and so on)";
+      : `the language of the traveler's latest message — NOT Hebrew. Their message: «${quotedMessage}». If that message is English, or you cannot tell which language it is, write English`;
 
   const today = new Date().toISOString().slice(0, 10);
   const system = `You're the Cloud9 Concierge — ${firstName}'s personal travel professional. Efficient, knowledgeable, and courteous, with a light, understated warmth. You work the way a skilled human travel agent does: get to the point, ask precise questions, deliver results.
