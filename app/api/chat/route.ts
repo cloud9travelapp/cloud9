@@ -78,13 +78,21 @@ const FLIGHT_TOOL: Anthropic.Tool = {
 const STAY_TOOL: Anthropic.Tool = {
   name: "search_stays",
   description:
-    "Search for hotels and accommodation in a destination. Only call this once you know the destination (city or area), the check-in date, and the check-out date.",
+    "Search for hotels and accommodation in a destination. Only call this once you know the destination (city or area), the check-in date, and the check-out date. ALWAYS include the destination's latitude and longitude — you know city coordinates; never ask the user for them.",
   input_schema: {
     type: "object",
     properties: {
       destination: {
         type: "string",
         description: "City or area name, e.g. Rome",
+      },
+      latitude: {
+        type: "number",
+        description: "Latitude of the destination's center, e.g. 41.9028 for Rome",
+      },
+      longitude: {
+        type: "number",
+        description: "Longitude of the destination's center, e.g. 12.4964 for Rome",
       },
       checkIn: { type: "string", description: "Check-in date, YYYY-MM-DD" },
       checkOut: { type: "string", description: "Check-out date, YYYY-MM-DD" },
@@ -162,6 +170,8 @@ async function runStaySearch(input: unknown): Promise<string> {
         q.budgetLevel === "luxury"
           ? q.budgetLevel
           : undefined,
+      latitude: typeof q.latitude === "number" ? q.latitude : undefined,
+      longitude: typeof q.longitude === "number" ? q.longitude : undefined,
     };
     if (
       !query.destination ||
@@ -171,9 +181,17 @@ async function runStaySearch(input: unknown): Promise<string> {
       return "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.";
     }
     const offers = await withTimeout(searchStays(query), 15000);
-    return JSON.stringify({ mock: IS_MOCK_STAY_PROVIDER, offers });
+    // A real provider can hand back mock offers (daily quota guard); their
+    // "mock-" ids re-label the cards as test data so the fallback stays honest.
+    const mock =
+      IS_MOCK_STAY_PROVIDER ||
+      (offers.length > 0 && offers.every((o) => o.id.startsWith("mock-")));
+    return JSON.stringify({ mock, offers });
   } catch (err) {
     console.error("Stay search failed:", err);
+    if (err instanceof Error && err.message.includes("latitude")) {
+      return "Invalid search: include the destination's latitude and longitude in the tool call and try again.";
+    }
     return "The hotel search is unavailable right now. Apologize briefly in this turn's reply language and offer to try again.";
   }
 }
@@ -417,7 +435,7 @@ Flights: you can search real flight options with the search_flights tool.
 Stays (hotels & accommodation): you can search real accommodation with the search_stays tool.
 - Gather what you need naturally: the destination (city or area), the check-in date, and the check-out date. Guests default to 2 — ask only if it matters. When you ask for the stay dates, use the DATES calendar block with "mode":"range" (check-in and check-out in one pick).
 - For budget, use the quick-reply options block with three choices, in this turn's reply language, mapping to the tool's budgetLevel: "On a budget" → budget, "Mid-range" → mid, "Treat yourself" → luxury. (Hebrew: "חסכוני" / "טווח ביניים" / "לפנק את עצמי".)
-- Only call search_stays once you have the destination and both check-in and check-out dates.
+- Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
 - If you write a brief note before calling the tool, write it in this turn's reply language — never English by default. For a Hebrew user it is Hebrew (e.g. "רגע, בודק אפשרויות לינה...") — do NOT start with "Let me check accommodation...". It's also fine to call with no preamble.
 - When the tool returns stay data:
   1. Re-read the offers array, then write one short sentence (two at most) in this turn's reply language, referencing a specific option by its EXACT name + price copied straight from the JSON — never invent, round, or swap a number. "Cheapest" = the offer with the lowest "pricePerNight". The cards carry the full list, so keep the sentence short.
