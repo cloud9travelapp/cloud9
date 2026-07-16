@@ -16,6 +16,7 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - **Brand**: `components/brand/` (cloud mark + `Lockup`); favicon `app/icon.svg` + `app/apple-icon.tsx`; social image `app/opengraph-image.tsx` (fixed sunset palette).
 
 ## Recently shipped
+- **Unit test tier (2026-07-16 pm)** — vitest, 44 tests: block parsers + cards-win-ties precedence (extracted to `lib/chat/blocks.ts`), language policy, calendar math (`lib/chat/dates.ts`), mock determinism + Hotelbeds mapper. `npm run test:unit` on every change.
 - **Post-selection round (2026-07-16 pm)** — offer cards render only on the latest message (pick → cards gone; history keeps summaries; product decision: "what did I see?" = conversational re-search); regret reopens the choice — one clarifying question → refined re-search → fresh cards, learned preference is standing for the trip.
 - **Streaming & polish round (2026-07-16)** — `StreamedText` smooth reveal (words flow from first token; ~300ms drain, snap on stream end, reduced-motion aware; streaming was verified working end-to-end — the fix is perceptual); non-Hebrew turns get a concrete language directive (verbatim message quote, English fallback); 3+-destination titles use a regional name or "A, B & more".
 - **Trip-integrity round (2026-07-08 pm)** — latest-40 history window (context-bleed root cause); offers-never-text universal card rule + one-leg-at-a-time for multi-destination stays; multi-destination auto-titles with custom-rename lock; live night count on the calendar + mismatch cross-check; open-pieces tracking (circle back to deferred flights/stays); trip rename UI + `PATCH /api/trips/[id]`.
@@ -39,6 +40,7 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 
 ## Working process
 - Non-trivial features: short plan → **WAIT for approval** → implement.
-- Verify locally: type-check + `npm run build` + preview DOM/computed-style checks. NOTE: the harness preview can't render animations, WebGL, or screenshots — flag those for the user's live review.
+- Verify locally: `npm run test:unit` (Tier U — free, ~5s, part of the definition of done on EVERY change) + type-check + `npm run build` + preview DOM/computed-style checks. NOTE: the harness preview can't render animations, WebGL, or screenshots — flag those for the user's live review.
+- Tier B (behavior harness, "robot Max" — multi-turn conversations vs the chat route with model-call cost) is an approved DESIGN but shelved: implement only if the user pulls the trigger (details in `memory/robot-max-behavior-suite`).
 - Small focused commits; push to `main`. Temp preview/verification routes are deleted before their commit.
 - Do not touch without asking: auth, DB, API-route logic internals, provider-layer signatures.
