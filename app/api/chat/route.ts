@@ -188,13 +188,17 @@ async function runStaySearch(input: unknown): Promise<string> {
     ) {
       return "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.";
     }
-    const offers = await withTimeout(searchStays(query), 15000);
+    const results = await withTimeout(searchStays(query), 15000);
+    // A worth-it deal rides the array marked with .deal — split it out so the
+    // cards never include it silently; the model OFFERS it (teaser sentence).
+    const deal = results.find((o) => o.deal);
+    const offers = results.filter((o) => !o.deal);
     // A real provider can hand back mock offers (daily quota guard); their
     // "mock-" ids re-label the cards as test data so the fallback stays honest.
     const mock =
       IS_MOCK_STAY_PROVIDER ||
-      (offers.length > 0 && offers.every((o) => o.id.startsWith("mock-")));
-    return JSON.stringify({ mock, offers });
+      (results.length > 0 && results.every((o) => o.id.startsWith("mock-")));
+    return JSON.stringify({ mock, offers, ...(deal ? { deal } : {}) });
   } catch (err) {
     console.error("Stay search failed:", err);
     if (err instanceof Error && err.message.includes("latitude")) {
@@ -463,6 +467,7 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
 - Recommend by FIT ("הכי כדאי"), never by price alone: a recommendation weighs price + location + quality (stars for now; guest scores once available) + everything you've learned about THIS traveler (including regret-flow preferences). Different travelers weigh these differently — reflect what you know about this one and name the trade-off: "הכי כדאי בשבילך: X — מרכזי וטוב, קצת יקר יותר; אם המחיר קובע — Y". Crowning the cheapest as the recommendation without a fit reason is a bug.
 - Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
 - Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
+- Worth-it deal: the tool result may carry a separate "deal" — a far-but-exceptional offer (its "deal" object has discountPct vs the shown same-star median). NEVER include it among the cards silently, and never present it as a card unprompted. In the results message you MAY add ONE short teaser sentence — e.g. "יש גם דיל שווה: 4 כוכבים 12 ק"מ מהמרכז, 35% מתחת למקבילים — מעניין?" — this is the single sanctioned exception to the no-questions-after-cards rule. If they're interested, present the deal as its own STAYS block (one card, copy the offer verbatim) and state the catch out loud: it's cheap BECAUSE it's far ("זול כי רחוק — 12 ק"מ מהמרכז"; add a transit estimate only if you're confident of it). If they decline or ignore the teaser, drop the deal entirely.
 - If you write a brief note before calling the tool, write it in this turn's reply language — never English by default. For a Hebrew user it is Hebrew (e.g. "רגע, בודק אפשרויות לינה...") — do NOT start with "Let me check accommodation...". It's also fine to call with no preamble.
 - When the tool returns stay data:
   1. Re-read the offers array, then write one short sentence (two at most) in this turn's reply language, referencing a specific option by its EXACT name + price copied straight from the JSON — never invent, round, or swap a number. "Cheapest" = the offer with the lowest "pricePerNight". The cards carry the full list, so keep the sentence short.
@@ -479,7 +484,7 @@ You can use BOTH tools in one conversation — for example find a flight, then a
 
 Offers are NEVER text, in any context. Every time a flight or stay offer appears in your message — first presentation, re-presentation ("show me those again"), comparison, recommendation, or a trip summary/wrap-up — it is presented as its card block. You may reference specific offers in text ONLY in a message that also carries their card block. Naming an offer with its price in plain text is always a bug — including "best value" or "I'd recommend" phrasings: recommend by pointing at a card you are showing in that same message. If a summary would mention options for a piece the user hasn't chosen yet, mark that piece as still open and show (or offer to show) the cards instead of describing them.
 
-Offers OWN their message: a message that presents search results is your one short summary sentence plus the card block, and it ENDS there. Never append a follow-up question — and never an OPTIONS block — after offer cards (one block per message; if the offers and a question compete for the slot, the offers ALWAYS win). Ask your next question in your NEXT turn, after the user reacts to the cards.`;
+Offers OWN their message: a message that presents search results is your one short summary sentence plus the card block, and it ENDS there. Never append a follow-up question — and never an OPTIONS block — after offer cards (one block per message; if the offers and a question compete for the slot, the offers ALWAYS win). Ask your next question in your NEXT turn, after the user reacts to the cards. Single exception: the one-sentence worth-it-deal teaser (stays rules), when the tool result carries a deal.`;
 
   // Per-turn directives live in a separate small block so they can't break
   // the static block's cacheability.

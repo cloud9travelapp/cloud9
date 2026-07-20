@@ -320,15 +320,56 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   return finalizeOffers(offers, query);
 }
 
+const DEAL_MIN_DISCOUNT = 0.3; // v1 starting constant (approved)
+const DEAL_MIN_STARS = 3;
+
+/**
+ * Worth-it deal v1: among the band offers the distance tier EXCLUDED, find
+ * the one priced far below the shown same-star median — ≥3★, needs ≥2 shown
+ * comparables with the exact same stars, discount ≥30%. Best discount wins;
+ * one deal max. The deal is never silently shown — the route packages it
+ * separately and the concierge offers it with the catch stated.
+ */
+export function detectDeal(
+  band: StayOffer[],
+  shown: StayOffer[],
+): StayOffer | undefined {
+  const shownIds = new Set(shown.map((o) => o.id));
+  let best: StayOffer | undefined;
+  let bestDiscount = 0;
+  for (const c of band) {
+    if (shownIds.has(c.id)) continue;
+    if (c.stars < DEAL_MIN_STARS || typeof c.distanceKm !== "number") continue;
+    const prices = shown
+      .filter((o) => o.stars === c.stars)
+      .map((o) => o.pricePerNight)
+      .sort((a, b) => a - b);
+    if (prices.length < 2) continue;
+    const median = prices[Math.floor((prices.length - 1) / 2)];
+    const discount = 1 - c.pricePerNight / median;
+    if (discount >= DEAL_MIN_DISCOUNT && discount > bestDiscount) {
+      bestDiscount = discount;
+      best = {
+        ...c,
+        deal: {
+          discountPct: Math.round(discount * 100),
+          comparableMedian: median,
+        },
+      };
+    }
+  }
+  return best;
+}
+
 /**
  * Shared tail of both search paths: budget band → distance tier (skipped on
- * distanceFilter "any") → card cap.
+ * distanceFilter "any") → card cap → deal detection (appended, marked with
+ * .deal; the route splits it out so cards never include it silently).
  */
 function finalizeOffers(all: StayOffer[], query: StayQuery): StayOffer[] {
   const band = filterForBudget(all, query.budgetLevel);
-  const tiered =
-    query.distanceFilter === "any"
-      ? band
-      : selectByDistance(band, medianDistanceKm(all));
-  return tiered.slice(0, 8);
+  if (query.distanceFilter === "any") return band.slice(0, 8);
+  const shown = selectByDistance(band, medianDistanceKm(all)).slice(0, 8);
+  const deal = detectDeal(band, shown);
+  return deal ? [...shown, deal] : shown;
 }

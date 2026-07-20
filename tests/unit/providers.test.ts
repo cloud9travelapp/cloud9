@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mockSearchFlights } from "@/lib/flights/mock";
 import { mockSearchStays } from "@/lib/stays/mock";
 import {
+  detectDeal,
   filterForBudget,
   haversineKm,
   mapHotels,
@@ -138,6 +139,31 @@ describe("hotelbeds mapping", () => {
     const mixed = [o(0, 0.5), o(1), o(2, 9), o(3), o(4), o(5), o(6), o(7)];
     expect(medianDistanceKm(mixed)).toBeUndefined();
     expect(selectByDistance(mixed, medianDistanceKm(mixed))).toHaveLength(8);
+  });
+
+  it("worth-it deal: far offer ≥30% under the shown same-star median", () => {
+    const mk = (id: string, price: number, stars: number, km?: number): StayOffer => ({
+      id, name: id, type: "hotel", area: "X", stars, amenities: [],
+      distanceKm: km, pricePerNight: price, totalPrice: price * 4, currency: "EUR",
+    });
+    // shown near-tier set: 4★ prices 100/120/140 (median 120), one 3★
+    const shown = [mk("s1", 100, 4, 1), mk("s2", 120, 4, 2), mk("s3", 140, 4, 1.5), mk("s4", 80, 3, 2)];
+    // far candidates excluded by the tier:
+    const far40 = mk("f1", 72, 4, 12); // 40% under 120 → deal
+    const far20 = mk("f2", 96, 4, 10); // only 20% under → no
+    const farNoDist = { ...mk("f3", 50, 4), distanceKm: undefined }; // no km → no
+    const far3star = mk("f4", 20, 3, 11); // 3★ has only 1 comparable → no
+    const band = [...shown, far40, far20, farNoDist, far3star];
+
+    const deal = detectDeal(band, shown);
+    expect(deal?.id).toBe("f1");
+    expect(deal?.deal).toEqual({ discountPct: 40, comparableMedian: 120 });
+
+    // below-threshold-only candidates → no deal
+    expect(detectDeal([...shown, far20], shown)).toBeUndefined();
+    // best discount wins when several qualify
+    const far50 = mk("f5", 60, 4, 14);
+    expect(detectDeal([...shown, far40, far50], shown)?.id).toBe("f5");
   });
 
   it("parses stars and types from category names", () => {

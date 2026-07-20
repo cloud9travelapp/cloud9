@@ -32,4 +32,8 @@ export type StayOffer = {
   pricePerNight: number;
   totalPrice: number; // pricePerNight × nights × rooms
   currency: string;
+  /** Set only on a "worth-it deal": a far-but-exceptional offer, never shown
+   *  silently — the route splits it out of the cards and the concierge OFFERS
+   *  it (one teaser sentence). */
+  deal?: { discountPct: number; comparableMedian: number };
 };
