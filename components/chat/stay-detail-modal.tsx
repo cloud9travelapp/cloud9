@@ -79,18 +79,22 @@ export function StayDetailModal({
   lang,
   onClose,
   onSelectRoom,
+  preload,
 }: {
   hotelId: string;
   hotelName: string;
   lang: Lang;
   onClose: () => void;
   onSelectRoom: (choice: string) => void;
+  /** Preview/testing only: render this detail instead of fetching. */
+  preload?: StayDetail;
 }) {
   const L = T[lang];
-  const [detail, setDetail] = useState<StayDetail | null>(null);
+  const [detail, setDetail] = useState<StayDetail | null>(preload ?? null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    if (preload) return;
     let alive = true;
     fetch("/api/stays/detail", {
       method: "POST",
@@ -103,7 +107,7 @@ export function StayDetailModal({
     return () => {
       alive = false;
     };
-  }, [hotelId]);
+  }, [hotelId, preload]);
 
   // Escape closes; page scroll locks while open.
   useEffect(() => {

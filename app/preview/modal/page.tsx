@@ -1,0 +1,68 @@
+"use client";
+
+// TEMPORARY preview route for the hotel detail modal — review only.
+// Renders the modal on deterministic mock data (no auth, no API), Hebrew and
+// English, plus a phase switcher. Delete after Max's review.
+
+import { useEffect, useState } from "react";
+import type { StayDetail } from "@/lib/stays/types";
+import { mockStayDetail } from "@/lib/stays/mock-detail";
+import { StayDetailModal } from "@/components/chat/stay-detail-modal";
+import type { Lang } from "@/components/chat/message-parts";
+
+const PHASES = ["midday", "sunrise", "sunset", "night"] as const;
+
+export default function ModalPreviewPage() {
+  const [detail, setDetail] = useState<StayDetail | null>(null);
+  const [lang, setLang] = useState<Lang>("he");
+  const [phase, setPhase] = useState<(typeof PHASES)[number]>("midday");
+  const [open, setOpen] = useState(true);
+  const [posted, setPosted] = useState<string | null>(null);
+
+  useEffect(() => {
+    void mockStayDetail("mock-preview-1").then(setDetail);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-phase", phase);
+  }, [phase]);
+
+  return (
+    <main className="min-h-screen bg-c-bg-1 p-6">
+      <div className="flex flex-wrap gap-2">
+        {PHASES.map((p) => (
+          <button key={p} type="button" onClick={() => setPhase(p)}
+            className={`rounded-full border border-c-border px-3 py-1 text-xs ${p === phase ? "bg-c-accent text-c-on-accent" : "bg-c-surface text-c-ink"}`}>
+            {p}
+          </button>
+        ))}
+        <button type="button" onClick={() => setLang(lang === "he" ? "en" : "he")}
+          className="rounded-full border border-c-border bg-c-surface px-3 py-1 text-xs text-c-ink">
+          lang: {lang}
+        </button>
+        <button type="button" onClick={() => { setOpen(true); setPosted(null); }}
+          className="rounded-full bg-c-accent px-3 py-1 text-xs text-c-on-accent">
+          open modal
+        </button>
+      </div>
+      {posted ? (
+        <p data-testid="posted" dir="auto" className="mt-4 text-sm text-c-ink">
+          {posted}
+        </p>
+      ) : null}
+      {open && detail ? (
+        <StayDetailModal
+          hotelId="mock-preview-1"
+          hotelName={lang === "he" ? "מלון הדוגמה" : "Sample Hotel"}
+          lang={lang}
+          preload={detail}
+          onClose={() => setOpen(false)}
+          onSelectRoom={(s) => {
+            setPosted(s);
+            setOpen(false);
+          }}
+        />
+      ) : null}
+    </main>
+  );
+}
