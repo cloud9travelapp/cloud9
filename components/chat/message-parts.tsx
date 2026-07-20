@@ -37,8 +37,9 @@ export type StayOfferView = {
   area: string;
   stars: number;
   amenities: string[];
-  distanceKey: string;
-  distanceMinutes: number;
+  distanceKey?: string;
+  distanceMinutes?: number;
+  distanceKm?: number; // straight-line km from the searched point (city center)
   pricePerNight: number;
   totalPrice: number;
   currency: string;
@@ -256,6 +257,7 @@ const LABELS: Record<
     stayType: (t: string) => string;
     amenity: (k: string) => string;
     distance: (key: string, minutes: number) => string;
+    kmFromCenter: (km: number) => string;
     select: string;
     selected: string; // prefix for the structured choice message
     layover: (duration: string, hub: string) => string;
@@ -285,6 +287,7 @@ const LABELS: Record<
     amenity: (k) => AMENITY_LABELS.he[k] ?? k,
     distance: (key, minutes) =>
       `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
+    kmFromCenter: (km) => `${km} ק"מ מהמרכז`,
     select: "בחר",
     selected: "בחרתי",
     layover: (dur, hub) => `עצירה ${dur} ב-${hub}`,
@@ -314,6 +317,7 @@ const LABELS: Record<
     amenity: (k) => AMENITY_LABELS.en[k] ?? k,
     distance: (key, minutes) =>
       `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
+    kmFromCenter: (km) => `${km} km from center`,
     select: "Select",
     selected: "Selected",
     layover: (dur, hub) => `${dur} layover in ${hub}`,
@@ -572,8 +576,10 @@ export function StayCard({
         </div>
       </div>
 
-      {/* stars + distance (distance only when the provider supplies it) */}
+      {/* stars + distance. Real offers carry a computed km-from-center; the
+          mock keeps its walking-minutes flavor; neither → no line. */}
       {offer.stars > 0 ||
+      typeof offer.distanceKm === "number" ||
       (offer.distanceKey && typeof offer.distanceMinutes === "number") ? (
         <div dir="auto" className="mt-1.5 flex items-center gap-2 text-xs text-c-muted">
           {offer.stars > 0 ? (
@@ -584,7 +590,9 @@ export function StayCard({
               {"★".repeat(offer.stars)}
             </span>
           ) : null}
-          {offer.distanceKey && typeof offer.distanceMinutes === "number" ? (
+          {typeof offer.distanceKm === "number" ? (
+            <span className="truncate">{L.kmFromCenter(offer.distanceKm)}</span>
+          ) : offer.distanceKey && typeof offer.distanceMinutes === "number" ? (
             <span className="truncate">
               {L.distance(offer.distanceKey, offer.distanceMinutes)}
             </span>
