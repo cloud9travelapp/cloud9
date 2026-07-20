@@ -3,7 +3,6 @@ import { after } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
-import { detectPreferences, mergePreferences } from "@/lib/preferences";
 import { detectReplyLanguage } from "@/lib/language";
 import { sanitizeTripTitle } from "@/lib/trip-title";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
@@ -114,6 +113,68 @@ const STAY_TOOL: Anthropic.Tool = {
     required: ["destination", "checkIn", "checkOut"],
   },
 };
+
+const PREFERENCE_TOOL: Anthropic.Tool = {
+  name: "remember_preference",
+  description:
+    'Record a preference the traveler EXPLICITLY stated or confirmed — never one you inferred. scope "stable" = person-level, true across trips ("dislikes huge hotels", "needs reliable wifi"). scope "trip" = this trip only (budget level, central-vs-quiet this time, resort mood). When unsure, use "trip".',
+  input_schema: {
+    type: "object",
+    properties: {
+      scope: { type: "string", enum: ["stable", "trip"] },
+      preference: {
+        type: "string",
+        description: "Short plain-language statement in English, max ~80 chars",
+      },
+    },
+    required: ["scope", "preference"],
+  },
+};
+
+/**
+ * Persist an explicitly-stated preference: stable → users.preferences
+ * (person-level, crosses trips), trip → trips.preferences (dies with the
+ * trip). Degrades gracefully if the trips.preferences column isn't migrated
+ * yet — the chat continues either way.
+ */
+async function rememberPreference(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  tripId: string,
+  input: unknown,
+): Promise<string> {
+  try {
+    const q = (input ?? {}) as { scope?: unknown; preference?: unknown };
+    const pref =
+      typeof q.preference === "string" ? q.preference.trim().slice(0, 120) : "";
+    if (!pref) return "Nothing to save: empty preference.";
+    const table = q.scope === "stable" ? "users" : "trips";
+    const id = q.scope === "stable" ? userId : tripId;
+    const { data } = await admin
+      .from(table)
+      .select("preferences")
+      .eq("id", id)
+      .single();
+    const existing: string[] = Array.isArray(
+      (data as { preferences?: unknown } | null)?.preferences,
+    )
+      ? ((data as { preferences: string[] }).preferences)
+      : [];
+    if (!existing.includes(pref)) {
+      const { error } = await admin
+        .from(table)
+        .update({ preferences: [...existing, pref] })
+        .eq("id", id);
+      if (error) throw new Error(error.message);
+    }
+    return q.scope === "stable"
+      ? "Saved as a stable preference."
+      : "Saved for this trip.";
+  } catch (err) {
+    console.error("remember_preference failed:", err);
+    return "Could not save the preference — continue without it.";
+  }
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -271,8 +332,9 @@ export async function POST(request: Request) {
   // brand-new trip has no history, so that path skips the query entirely.
   let trip: { id: string; name: string };
   let history: ChatRow[];
+  let tripPrefs: string[] = [];
   if (rawTripId) {
-    const [tripRes, historyRes] = await Promise.all([
+    const [tripRes, historyRes, prefsRes] = await Promise.all([
       admin
         .from("trips")
         .select("id, name")
@@ -285,12 +347,19 @@ export async function POST(request: Request) {
         .eq("trip_id", rawTripId)
         .order("created_at", { ascending: false })
         .limit(40),
+      // Best-effort: errors (e.g. column not migrated yet) yield [].
+      admin.from("trips").select("preferences").eq("id", rawTripId).single(),
     ]);
     if (!tripRes.data) {
       return Response.json({ error: "Trip not found" }, { status: 404 });
     }
     trip = tripRes.data;
     history = ((historyRes.data ?? []) as ChatRow[]).reverse();
+    const rawPrefs = (prefsRes.data as { preferences?: unknown } | null)
+      ?.preferences;
+    tripPrefs = Array.isArray(rawPrefs)
+      ? rawPrefs.filter((p): p is string => typeof p === "string")
+      : [];
   } else {
     const { data, error } = await admin
       .from("trips")
@@ -307,30 +376,22 @@ export async function POST(request: Request) {
 
   const isFirstMessage = history.length === 0;
 
-  // Learn preferences from this message; persist new ones and save the user's
-  // message in parallel — they're independent writes.
-  const existingPrefs: string[] = Array.isArray(user.preferences)
-    ? (user.preferences as string[])
-    : [];
-  const merged = mergePreferences(existingPrefs, detectPreferences(message));
-  const writes: PromiseLike<unknown>[] = [
-    admin.from("chat_messages").insert({
-      user_id: user.id,
-      trip_id: trip.id,
-      role: "user",
-      content: message,
-    }),
-  ];
-  if (merged.length !== existingPrefs.length) {
-    writes.push(
-      admin.from("users").update({ preferences: merged }).eq("id", user.id),
-    );
-  }
-  await Promise.all(writes);
+  // Save the user's message before we start generating. (Preferences are no
+  // longer keyword-scraped from messages — ask-don't-assume: the concierge
+  // records only what the user explicitly states, via remember_preference.)
+  await admin.from("chat_messages").insert({
+    user_id: user.id,
+    trip_id: trip.id,
+    role: "user",
+    content: message,
+  });
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "there";
-  const prefLine = merged.length
-    ? `Known travel preferences: ${merged.join(", ")}.`
+  const stablePrefs: string[] = Array.isArray(user.preferences)
+    ? (user.preferences as string[])
+    : [];
+  const prefLine = stablePrefs.length
+    ? `Known travel preferences: ${stablePrefs.join(", ")}.`
     : "No saved preferences yet.";
 
   // The reply language is decided HERE, deterministically, once per turn —
@@ -442,6 +503,7 @@ Track the open pieces of the trip: at every point, know what's still missing to 
 Second thoughts about a picked offer (any phrasing — "אני מתחרט", "לא בטוח לגבי המלון", "show me other options"): that choice REOPENS — the old selection is replaced, not still standing, and later summaries never mention the abandoned offer as if it holds. Don't just re-show the same list, and don't read regret as quitting the planning. FIRST ask ONE sharp clarifying question with options carrying real dimensions ("מה לא התאים — המחיר, המיקום, משהו אחר?"), THEN search again with the refined preference and present fresh cards. What you learn is a STANDING preference for the rest of this trip ("wants a pool", "closer to the beach", "cheaper") — apply it to every later search without being asked again. Their screen no longer shows old cards: if they ask what the options were ("מה היו האופציות?"), run the search again and present cards — never recite remembered offers in text.
 
 Preferences — ask, don't assume: NEVER conclude a preference from indirect signals (a single choice, tone, what they didn't say). When a preference seems likely but wasn't stated, ask ONE clarifying question with options. Only what they explicitly state or confirm counts as known. A known preference is the STARTING POINT OF A QUESTION, never a silent filter: "בטיולים קודמים העדפת מלונות קטנים — גם הפעם?" — they confirm or change it, and their answer wins. This applies doubly to anything carried across trips.
+Recording: when they explicitly state or confirm a preference, save it with the remember_preference tool, silently (no announcement). scope "stable" ONLY for person-level truths stated as general ("אני תמיד...", "אני שונא מלונות ענקיים") — these follow the traveler to future trips and appear in your profile line. scope "trip" for this trip's context (budget level, central vs quiet this time, resort mood) and for regret-flow learnings, unless they say it's general. When unsure — "trip". Never record an inference. This trip's stated preferences, when any, appear at the end of these instructions.
 
 Context across the conversation: remember what they tell you (dates, budget, origin, travellers) and reuse it — don't re-ask what you already know. BUT when they switch the destination (or another major parameter) mid-conversation, briefly CONFIRM the carried-over details before searching, with quick-reply options — e.g. "Rhodes — same dates (Aug 10-15) and budget?" with options ["Yes", "Change"] (in this turn's reply language). Never silently reuse the old dates or budget for a new destination.
 
@@ -493,7 +555,7 @@ Offers OWN their message: a message that presents search results is your one sho
   // the static block's cacheability.
   const systemDynamic = `THIS TURN'S REPLY LANGUAGE: ${langDirective}. This is already decided from their latest message — do NOT re-decide it from the conversation, from your own earlier replies, or from tool results (tool results arrive as English JSON; that changes nothing). EVERY word you write this turn is in that language: the reply itself, any brief note before a tool call (e.g. "רגע, בודק אפשרויות..." when the turn is Hebrew — never "Let me check flights..."), the summary after a tool result, and every string inside a block (the "question", every option, every label). One message is ONE language from its first word to its last — commit to the language before you write the first word and never switch mid-message.
 
-${
+${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n\n` : ""}${
     isFirstMessage
       ? "First message: a brief, professional greeting as the Cloud9 Concierge, then ask where they'd like to go. Nothing more."
       : "Returning traveler: a short, courteous greeting by name, draw on what you know of their preferences, and skip the introductions."
@@ -528,7 +590,7 @@ ${
             max_tokens: 4096,
             thinking: { type: "disabled" },
             system: systemBlocks,
-            tools: [FLIGHT_TOOL, STAY_TOOL],
+            tools: [FLIGHT_TOOL, STAY_TOOL, PREFERENCE_TOOL],
             messages: anthropicMessages,
           });
 
@@ -561,10 +623,18 @@ ${
                   ? await runFlightSearch(block.input)
                   : block.name === "search_stays"
                     ? await runStaySearch(block.input)
-                    : "Unknown tool.",
+                    : block.name === "remember_preference"
+                      ? await rememberPreference(
+                          admin,
+                          user.id,
+                          trip.id,
+                          block.input,
+                        )
+                      : "Unknown tool.",
               is_error:
                 block.name === "search_flights" ||
-                block.name === "search_stays"
+                block.name === "search_stays" ||
+                block.name === "remember_preference"
                   ? undefined
                   : true,
             });
