@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
+import { getStayDetail } from "@/lib/stays/detail";
 import { detectReplyLanguage } from "@/lib/language";
 import { sanitizeTripTitle } from "@/lib/trip-title";
 import { logDiag } from "@/lib/diag";
@@ -114,6 +115,40 @@ const STAY_TOOL: Anthropic.Tool = {
     required: ["destination", "checkIn", "checkOut"],
   },
 };
+
+const HOTEL_DETAILS_TOOL: Anthropic.Tool = {
+  name: "get_hotel_details",
+  description:
+    'Fetch a searched hotel\'s details — rooms with prices and board options, amenities, description, address — by its offer "id" from a previous search_stays result. Use whenever the user asks about rooms, room differences, amenities, or the hotel itself. NEVER answer such questions from memory.',
+  input_schema: {
+    type: "object",
+    properties: {
+      hotelId: {
+        type: "string",
+        description: 'The offer "id" from a search_stays result, e.g. "hb-12345"',
+      },
+    },
+    required: ["hotelId"],
+  },
+};
+
+/** Run a get_hotel_details call — compact JSON for the model (image URLs are
+ *  useless in context; the modal shows them). */
+async function runHotelDetails(input: unknown): Promise<string> {
+  try {
+    const q = (input ?? {}) as { hotelId?: unknown };
+    const hotelId = typeof q.hotelId === "string" ? q.hotelId.trim() : "";
+    if (!hotelId) {
+      return "Invalid request: hotelId is required (the offer id from search_stays).";
+    }
+    const { images, ...detail } = await getStayDetail(hotelId);
+    return JSON.stringify({ ...detail, imageCount: images.length });
+  } catch (err) {
+    console.error("Hotel details failed:", err);
+    await logDiag("hotel_details_error", { message: String(err).slice(0, 300) });
+    return "Hotel details are unavailable right now.";
+  }
+}
 
 const PREFERENCE_TOOL: Anthropic.Tool = {
   name: "remember_preference",
@@ -537,6 +572,7 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
 - Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
 - Worth-it deal: the tool result may carry a separate "deal" — a far-but-exceptional offer (its "deal" object has discountPct vs the shown same-star median). NEVER include it among the cards silently, and never present it as a card unprompted. In the results message you MAY add ONE short teaser sentence — e.g. "יש גם דיל שווה: 4 כוכבים 12 ק"מ מהמרכז, 35% מתחת למקבילים — מעניין?" — this is the single sanctioned exception to the no-questions-after-cards rule. If they're interested, present the deal as its own STAYS block (one card, copy the offer verbatim) and state the catch out loud: it's cheap BECAUSE it's far ("זול כי רחוק — 12 ק"מ מהמרכז"; add a transit estimate only if you're confident of it). If they decline or ignore the teaser, drop the deal entirely.
 - If you write a brief note before calling the tool, write it in this turn's reply language — never English by default. For a Hebrew user it is Hebrew (e.g. "רגע, בודק אפשרויות לינה...") — do NOT start with "Let me check accommodation...". It's also fine to call with no preamble.
+- Room questions ("מה ההבדל בין דלוקס לסוויטה?", "יש חדר עם מרפסת?"): call get_hotel_details with the hotel's offer id and answer ONLY from its data — room names, boards, and prices copied verbatim, never invented or recalled from memory. If it returns no rooms, say room prices aren't available right now and offer a fresh search. Room answers are consultation TEXT (exact prices allowed) — they are not offer presentations, so no cards block; mention they can tap the hotel card for photos and the full room list.
 - Two hotel selection paths: (1) a card's quick "בחר" arrives as "בחרתי: <hotel>..." — the STANDARD (cheapest) room is implied; your confirmation must say so honestly and note it's changeable: "נבחר חדר סטנדרטי — אפשר לשנות דרך פרטי המלון" (tap the card for details). (2) a modal room pick arrives as "בחרתי חדר: <hotel>, <room>, <board>, <price>" — that exact room+board is the choice; copy its details exactly, never re-ask. Both paths set the trip's hotel; a later room or hotel change follows the second-thoughts flow (the room choice REOPENS like any picked offer).
 - When the tool returns stay data:
   1. Re-read the offers array, then write the results text in this turn's reply language, in EXACTLY this shape: ONE opening line (how many options / what context — NO hotel names, prices, or distances in it), plus AT MOST ONE best-fit sentence naming AT MOST ONE offer — your "הכי כדאי" pick with its single decisive trade-off — its name/price/distance copied EXACTLY from the JSON (never invent, round, or swap a number; "cheapest" = lowest "pricePerNight"), plus the deal teaser when the tool result carries a deal. NEVER enumerate multiple offers with prices or distances in text — comparing offers is what the cards are for.
@@ -596,7 +632,7 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             max_tokens: 4096,
             thinking: { type: "disabled" },
             system: systemBlocks,
-            tools: [FLIGHT_TOOL, STAY_TOOL, PREFERENCE_TOOL],
+            tools: [FLIGHT_TOOL, STAY_TOOL, HOTEL_DETAILS_TOOL, PREFERENCE_TOOL],
             messages: anthropicMessages,
           });
 
@@ -624,20 +660,23 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             const known =
               block.name === "search_flights" ||
               block.name === "search_stays" ||
+              block.name === "get_hotel_details" ||
               block.name === "remember_preference";
             const result =
               block.name === "search_flights"
                 ? await runFlightSearch(block.input)
                 : block.name === "search_stays"
                   ? await runStaySearch(block.input)
-                  : block.name === "remember_preference"
-                    ? await rememberPreference(
-                        admin,
-                        user.id,
-                        trip.id,
-                        block.input,
-                      )
-                    : "Unknown tool.";
+                  : block.name === "get_hotel_details"
+                    ? await runHotelDetails(block.input)
+                    : block.name === "remember_preference"
+                      ? await rememberPreference(
+                          admin,
+                          user.id,
+                          trip.id,
+                          block.input,
+                        )
+                      : "Unknown tool.";
             // Every tool call self-reports (name + outcome) to diag_events —
             // diagnosis is one SQL query, never a log-window hunt.
             const ok = result.startsWith("{") || result.startsWith("Saved");
