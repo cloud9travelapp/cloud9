@@ -142,6 +142,49 @@ export function filterForBudget(offers: StayOffer[], budget?: BudgetLevel): Stay
   return band.length >= 3 ? band : offers;
 }
 
+const MIN_CARDS = 5; // distance tier backfills to at least this many offers
+
+/**
+ * Median distanceKm of the set, or undefined when fewer than half the offers
+ * carry a distance (no reliable signal — the mock and coord-less responses
+ * pass through untouched).
+ */
+export function medianDistanceKm(offers: StayOffer[]): number | undefined {
+  const d = offers
+    .map((o) => o.distanceKm)
+    .filter((x): x is number => typeof x === "number")
+    .sort((a, b) => a - b);
+  if (d.length === 0 || d.length < offers.length / 2) return undefined;
+  return d[Math.floor((d.length - 1) / 2)];
+}
+
+/**
+ * Distance tier: prefer offers at or under the SET's median distance — a
+ * relative cutoff, so 5km-sprawl Tokyo and compact Florence each get their
+ * own notion of "near". Offers without distanceKm count as near. When the
+ * near tier is thinner than minCards, backfill nearest-first from the far
+ * tier. Far offers otherwise surface only through the deal mechanism, a
+ * moved search point (user named an area), or distanceFilter "any".
+ */
+export function selectByDistance(
+  offers: StayOffer[],
+  medianKm: number | undefined,
+  minCards = MIN_CARDS,
+): StayOffer[] {
+  if (medianKm === undefined) return offers;
+  const isNear = (o: StayOffer) =>
+    typeof o.distanceKm !== "number" || o.distanceKm <= medianKm;
+  const near = offers.filter(isNear);
+  if (near.length >= minCards) return near;
+  const fill = new Set(
+    offers
+      .filter((o) => !isNear(o))
+      .sort((a, b) => a.distanceKm! - b.distanceKm!)
+      .slice(0, minCards - near.length),
+  );
+  return offers.filter((o) => isNear(o) || fill.has(o)); // keeps price order
+}
+
 /** Cache key: coordinates rounded to ~1km + stay shape. Budget level is NOT
  *  in the key — the full list is cached and bands are filtered afterwards. */
 function cacheKey(query: StayQuery): string {
@@ -215,7 +258,7 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   const key = cacheKey(query);
   const cached = await cacheGet(key);
   if (cached) {
-    return filterForBudget(cached, query.budgetLevel).slice(0, 8);
+    return finalizeOffers(cached, query);
   }
 
   if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
@@ -258,7 +301,34 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   }
 
   const data = (await res.json()) as HotelbedsAvailability;
+  // One-time diagnostic for the reviews strategy (both/and decision): does
+  // the availability response carry review data? Shows up in runtime logs on
+  // the next live search; remove once the answer is recorded.
+  const firstHotel = (data.hotels?.hotels ?? [])[0] as
+    | Record<string, unknown>
+    | undefined;
+  if (firstHotel) {
+    console.log(
+      "hotelbeds review-node check:",
+      "reviews" in firstHotel
+        ? JSON.stringify(firstHotel.reviews).slice(0, 200)
+        : "no reviews field in availability response",
+    );
+  }
   const offers = mapHotels(data.hotels?.hotels ?? [], query);
   await cachePut(key, offers);
-  return filterForBudget(offers, query.budgetLevel).slice(0, 8);
+  return finalizeOffers(offers, query);
+}
+
+/**
+ * Shared tail of both search paths: budget band → distance tier (skipped on
+ * distanceFilter "any") → card cap.
+ */
+function finalizeOffers(all: StayOffer[], query: StayQuery): StayOffer[] {
+  const band = filterForBudget(all, query.budgetLevel);
+  const tiered =
+    query.distanceFilter === "any"
+      ? band
+      : selectByDistance(band, medianDistanceKm(all));
+  return tiered.slice(0, 8);
 }

@@ -5,10 +5,13 @@ import {
   filterForBudget,
   haversineKm,
   mapHotels,
+  medianDistanceKm,
+  selectByDistance,
   starsFrom,
   typeFrom,
   type HotelbedsHotel,
 } from "@/lib/stays/hotelbeds";
+import type { StayOffer } from "@/lib/stays/types";
 import type { StayQuery } from "@/lib/stays/types";
 
 const QUERY: StayQuery = {
@@ -105,6 +108,36 @@ describe("hotelbeds mapping", () => {
       QUERY,
     );
     expect(noGeo[0].distanceKm).toBeUndefined();
+  });
+
+  it("distance tier prefers the near half, backfills nearest-first to 5", () => {
+    const o = (i: number, km?: number): StayOffer => ({
+      id: `d${i}`,
+      name: `D${i}`,
+      type: "hotel",
+      area: "X",
+      stars: 3,
+      amenities: [],
+      distanceKm: km,
+      pricePerNight: 100 + i, // ascending price = stable order marker
+      totalPrice: 400,
+      currency: "EUR",
+    });
+    // set-relative cutoff: median of [0.5, 1, 2, 3, 8, 9, 11, 12] = 3
+    const spread = [o(0, 0.5), o(1, 1), o(2, 2), o(3, 3), o(4, 8), o(5, 9), o(6, 11), o(7, 12)];
+    const median = medianDistanceKm(spread)!;
+    expect(median).toBe(3);
+    const near = selectByDistance(spread, median);
+    expect(near.map((x) => x.id)).toEqual(["d0", "d1", "d2", "d3", "d4"]); // 4 near + nearest far backfill
+    // a thick near tier keeps only near offers
+    const compact = [o(0, 0.4), o(1, 0.6), o(2, 0.8), o(3, 1), o(4, 1.2), o(5, 6), o(6, 7), o(7, 9)];
+    const kept = selectByDistance(compact, medianDistanceKm(compact)!);
+    expect(kept.every((x) => x.distanceKm! <= 1.2)).toBe(true);
+    expect(kept.length).toBeGreaterThanOrEqual(5);
+    // offers without distance count as near; mostly-missing distances = no-op
+    const mixed = [o(0, 0.5), o(1), o(2, 9), o(3), o(4), o(5), o(6), o(7)];
+    expect(medianDistanceKm(mixed)).toBeUndefined();
+    expect(selectByDistance(mixed, medianDistanceKm(mixed))).toHaveLength(8);
   });
 
   it("parses stars and types from category names", () => {

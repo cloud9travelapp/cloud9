@@ -16,6 +16,7 @@ export type StayQuery = {
   budgetLevel?: BudgetLevel; // default "mid"
   latitude?: number; // destination city center (real providers search by geo)
   longitude?: number;
+  distanceFilter?: "near" | "any"; // default "near": prefer close-to-center offers
 };
 
 export type StayOffer = {

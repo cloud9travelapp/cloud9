@@ -104,6 +104,12 @@ const STAY_TOOL: Anthropic.Tool = {
         enum: ["budget", "mid", "luxury"],
         description: "Budget level (optional)",
       },
+      distanceFilter: {
+        type: "string",
+        enum: ["near", "any"],
+        description:
+          '"near" (default) prefers offers close to the searched point. Pass "any" ONLY when the user explicitly wants outskirts or says distance does not matter.',
+      },
     },
     required: ["destination", "checkIn", "checkOut"],
   },
@@ -173,6 +179,7 @@ async function runStaySearch(input: unknown): Promise<string> {
           : undefined,
       latitude: typeof q.latitude === "number" ? q.latitude : undefined,
       longitude: typeof q.longitude === "number" ? q.longitude : undefined,
+      distanceFilter: q.distanceFilter === "any" ? "any" : undefined,
     };
     if (
       !query.destination ||
@@ -455,6 +462,7 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
 - When presenting results, ADVISE: use each offer's area plus your own knowledge of the city to say the trade-off out loud in your one-sentence summary ("הזול ביותר ב-San Siro — רחוק מהמרכז; במרכז יש את X ב-Y"). Real offers include "distanceKm" — the straight-line distance from the center: ground your location advice in that number ("2.1 ק"מ מהמרכז"), copied exactly from the offer, in preference to inferring from zone names. The cards rule still applies — you're pointing at cards in the same message.
 - Recommend by FIT ("הכי כדאי"), never by price alone: a recommendation weighs price + location + quality (stars for now; guest scores once available) + everything you've learned about THIS traveler (including regret-flow preferences). Different travelers weigh these differently — reflect what you know about this one and name the trade-off: "הכי כדאי בשבילך: X — מרכזי וטוב, קצת יקר יותר; אם המחיר קובע — Y". Crowning the cheapest as the recommendation without a fit reason is a bug.
 - Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
+- Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
 - If you write a brief note before calling the tool, write it in this turn's reply language — never English by default. For a Hebrew user it is Hebrew (e.g. "רגע, בודק אפשרויות לינה...") — do NOT start with "Let me check accommodation...". It's also fine to call with no preamble.
 - When the tool returns stay data:
   1. Re-read the offers array, then write one short sentence (two at most) in this turn's reply language, referencing a specific option by its EXACT name + price copied straight from the JSON — never invent, round, or swap a number. "Cheapest" = the offer with the lowest "pricePerNight". The cards carry the full list, so keep the sentence short.
