@@ -301,19 +301,34 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   }
 
   const data = (await res.json()) as HotelbedsAvailability;
-  // One-time diagnostic for the reviews strategy (both/and decision): does
-  // the availability response carry review data? Shows up in runtime logs on
-  // the next live search; remove once the answer is recorded.
+  // Diagnostic for the reviews strategy (both/and decision): does the
+  // availability response carry review data? Logged AND stashed in Supabase
+  // (Vercel's runtime-log retention is too short to hunt) — read it with:
+  //   select offers from stay_search_cache where key = 'diag:review-node';
+  // Remove once the answer is recorded.
   const firstHotel = (data.hotels?.hotels ?? [])[0] as
     | Record<string, unknown>
     | undefined;
   if (firstHotel) {
-    console.log(
-      "hotelbeds review-node check:",
+    const finding =
       "reviews" in firstHotel
-        ? JSON.stringify(firstHotel.reviews).slice(0, 200)
-        : "no reviews field in availability response",
-    );
+        ? { hasReviews: true, sample: firstHotel.reviews }
+        : { hasReviews: false };
+    console.log("hotelbeds review-node check:", JSON.stringify(finding).slice(0, 200));
+    try {
+      await getSupabaseAdmin().from("stay_search_cache").upsert({
+        key: "diag:review-node",
+        offers: {
+          checkedAt: new Date().toISOString(),
+          destination: query.destination,
+          ...finding,
+        },
+        // Epoch date keeps this row out of the daily live-call count.
+        created_at: new Date(0).toISOString(),
+      });
+    } catch {
+      /* best-effort diagnostic */
+    }
   }
   const offers = mapHotels(data.hotels?.hotels ?? [], query);
   await cachePut(key, offers);
