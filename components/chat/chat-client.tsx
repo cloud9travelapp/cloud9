@@ -12,7 +12,9 @@ import {
   FlightCard,
   StayCard,
   DateCalendar,
+  type Lang,
 } from "./message-parts";
+import { StayDetailModal } from "./stay-detail-modal";
 import { parseAssistantMessage } from "@/lib/chat/blocks";
 import HeroDithering from "@/components/landing/hero-dithering";
 
@@ -89,6 +91,11 @@ export default function ChatClient({
   const [currentTripId, setCurrentTripId] = useState<string | null>(tripId);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [detailFor, setDetailFor] = useState<{
+    id: string;
+    name: string;
+    lang: Lang;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -191,6 +198,18 @@ export default function ChatClient({
 
   return (
     <div className="flex h-full flex-col">
+      {detailFor ? (
+        <StayDetailModal
+          hotelId={detailFor.id}
+          hotelName={detailFor.name}
+          lang={detailFor.lang}
+          onClose={() => setDetailFor(null)}
+          onSelectRoom={(choice) => {
+            setDetailFor(null);
+            void send(choice);
+          }}
+        />
+      ) : null}
       {/* Header — frosted, floats over the sky */}
       <header className="flex items-center justify-between border-b border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex items-center gap-2">
@@ -336,6 +355,13 @@ export default function ChatClient({
                           mock={stays.mock}
                           lang={stays.lang}
                           onSelect={(s) => void send(s)}
+                          onOpenDetail={() =>
+                            setDetailFor({
+                              id: offer.id,
+                              name: offer.name,
+                              lang: stays.lang,
+                            })
+                          }
                         />
                       ))}
                     </div>

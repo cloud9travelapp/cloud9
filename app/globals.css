@@ -410,6 +410,23 @@ body {
   }
 }
 
+/* Hotel-detail modal — gentle float-in, static under reduced motion. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .modal-enter {
+    animation: modal-in 0.28s ease-out;
+  }
+}
+
 /* Living logo — the cloud mark drifts gently, cloud-like (web only; its colour
    is bound to the phase accent via the token). Static under reduced motion. */
 @keyframes logo-float {

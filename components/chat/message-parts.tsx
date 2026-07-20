@@ -228,6 +228,11 @@ const AMENITY_LABELS: Record<Lang, Record<string, string>> = {
   },
 };
 
+/** Amenity chip label for a neutral key — shared with the detail modal. */
+export function amenityLabel(lang: Lang, key: string): string {
+  return AMENITY_LABELS[lang][key] ?? key;
+}
+
 const DISTANCE_LANDMARKS: Record<Lang, Record<string, string>> = {
   he: {
     beach: "מהחוף",
@@ -549,15 +554,22 @@ export function StayCard({
   mock,
   lang,
   onSelect,
+  onOpenDetail,
 }: {
   offer: StayOfferView;
   mock: boolean;
   lang: Lang;
   onSelect?: (choice: string) => void;
+  /** Real chat only: tapping the card body opens the detail modal. */
+  onOpenDetail?: () => void;
 }) {
   const L = LABELS[lang];
   return (
-    <div className="rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm">
+    <div
+      className={`rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+        onOpenDetail ? " cursor-pointer select-none" : ""
+      }`}
+      onClick={onOpenDetail}>
       {/* name + type (start) · price per night (end, LTR) */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
