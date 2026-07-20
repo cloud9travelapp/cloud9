@@ -7,20 +7,35 @@
 import { useEffect, useState } from "react";
 import type { StayDetail } from "@/lib/stays/types";
 import { mockStayDetail } from "@/lib/stays/mock-detail";
-import { StayDetailModal } from "@/components/chat/stay-detail-modal";
+import {
+  StayDetailModal,
+  type CloseVariant,
+  type GalleryNav,
+} from "@/components/chat/stay-detail-modal";
 import type { Lang } from "@/components/chat/message-parts";
 
 const PHASES = ["midday", "sunrise", "sunset", "night"] as const;
+const CLOSE_VARIANTS: CloseVariant[] = ["circle", "puff", "ghost"];
+const GALLERY_NAVS: GalleryNav[] = ["fade", "dots"];
+// Stable placeholder photos so the gallery variants are reviewable.
+const PREVIEW_IMAGES = Array.from(
+  { length: 5 },
+  (_, i) => `https://picsum.photos/seed/cloud9-${i}/640/440`,
+);
 
 export default function ModalPreviewPage() {
   const [detail, setDetail] = useState<StayDetail | null>(null);
   const [lang, setLang] = useState<Lang>("he");
   const [phase, setPhase] = useState<(typeof PHASES)[number]>("midday");
+  const [closeVariant, setCloseVariant] = useState<CloseVariant>("circle");
+  const [galleryNav, setGalleryNav] = useState<GalleryNav>("fade");
   const [open, setOpen] = useState(true);
   const [posted, setPosted] = useState<string | null>(null);
 
   useEffect(() => {
-    void mockStayDetail("mock-preview-1").then(setDetail);
+    void mockStayDetail("mock-preview-1").then((d) =>
+      setDetail({ ...d, images: PREVIEW_IMAGES }),
+    );
   }, []);
 
   useEffect(() => {
@@ -40,6 +55,18 @@ export default function ModalPreviewPage() {
           className="rounded-full border border-c-border bg-c-surface px-3 py-1 text-xs text-c-ink">
           lang: {lang}
         </button>
+        {CLOSE_VARIANTS.map((v) => (
+          <button key={v} type="button" onClick={() => setCloseVariant(v)}
+            className={`rounded-full border border-c-border px-3 py-1 text-xs ${v === closeVariant ? "bg-c-accent text-c-on-accent" : "bg-c-surface text-c-ink"}`}>
+            close: {v}
+          </button>
+        ))}
+        {GALLERY_NAVS.map((v) => (
+          <button key={v} type="button" onClick={() => setGalleryNav(v)}
+            className={`rounded-full border border-c-border px-3 py-1 text-xs ${v === galleryNav ? "bg-c-accent text-c-on-accent" : "bg-c-surface text-c-ink"}`}>
+            gallery: {v}
+          </button>
+        ))}
         <button type="button" onClick={() => { setOpen(true); setPosted(null); }}
           className="rounded-full bg-c-accent px-3 py-1 text-xs text-c-on-accent">
           open modal
@@ -56,6 +83,8 @@ export default function ModalPreviewPage() {
           hotelName={lang === "he" ? "מלון הדוגמה" : "Sample Hotel"}
           lang={lang}
           preload={detail}
+          closeVariant={closeVariant}
+          galleryNav={galleryNav}
           onClose={() => setOpen(false)}
           onSelectRoom={(s) => {
             setPosted(s);
