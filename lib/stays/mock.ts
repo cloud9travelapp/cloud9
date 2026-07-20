@@ -4,7 +4,7 @@ import type { StayOffer, StayQuery, StayType } from "./types";
 // offers, while different queries look meaningfully different. Mirrors the
 // flight mock's seeded approach.
 
-function hashString(s: string): number {
+export function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -14,7 +14,7 @@ function hashString(s: string): number {
 }
 
 /** Small seeded PRNG (mulberry32). */
-function makeRng(seed: number): () => number {
+export function makeRng(seed: number): () => number {
   let a = seed;
   return () => {
     a |= 0;
