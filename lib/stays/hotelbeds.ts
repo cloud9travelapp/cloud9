@@ -300,35 +300,9 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   }
 
   const data = (await res.json()) as HotelbedsAvailability;
-  // Diagnostic for the reviews strategy (both/and decision): does the
-  // availability response carry review data? Logged AND stashed in Supabase
-  // (Vercel's runtime-log retention is too short to hunt) — read it with:
-  //   select offers from stay_search_cache where key = 'diag:review-node';
-  // Remove once the answer is recorded.
-  const firstHotel = (data.hotels?.hotels ?? [])[0] as
-    | Record<string, unknown>
-    | undefined;
-  if (firstHotel) {
-    const finding =
-      "reviews" in firstHotel
-        ? { hasReviews: true, sample: firstHotel.reviews }
-        : { hasReviews: false };
-    console.log("hotelbeds review-node check:", JSON.stringify(finding).slice(0, 200));
-    try {
-      await getSupabaseAdmin().from("stay_search_cache").upsert({
-        key: "diag:review-node",
-        offers: {
-          checkedAt: new Date().toISOString(),
-          destination: query.destination,
-          ...finding,
-        },
-        // Epoch date keeps this row out of the daily live-call count.
-        created_at: new Date(0).toISOString(),
-      });
-    } catch {
-      /* best-effort diagnostic */
-    }
-  }
+  // Verified 2026-07-20 (diag run, Sofia): availability responses carry NO
+  // review data — TripAdvisor scores, if anywhere, live in the Content API
+  // (checked in the detail-layer round). First-party reviews are primary.
   const offers = mapHotels(data.hotels?.hotels ?? [], query);
   await cachePut(key, offers);
   return finalizeOffers(offers, query);

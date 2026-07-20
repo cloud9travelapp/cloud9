@@ -33,7 +33,7 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 
 ## Open TODOs (details in `memory/`)
 - Supabase migrations pending (SQL handed over 2026-07-20): `trips.preferences` jsonb (trip-scoped preference storage; degrades gracefully until run) + `hotel_reviews` table (first-party verified reviews foundation — BOTH/AND strategy with TripAdvisor cold-start, see `memory/first-party-reviews`; collection/display are post-booking phases) + `diag_events` table (runtime self-reporting; logDiag degrades to console-only until run).
-- Reviews cold-start check: the "hotelbeds review-node check" log line fires on the next live search — if the availability response carries TripAdvisor scores, wire them into cards + deal-v2 (normalize 0–5 → 0–10).
+- Reviews verdict (2026-07-20, Sofia diag run): availability responses carry NO review data — deal-v2/card scores cannot come from the search response. Remaining check (folded into the detail-layer round): does the Content API carry TripAdvisor review data? Either way, first-party verified reviews are strategically PRIMARY.
 - Supabase migration pending: `alter table trips add column if not exists name_is_custom boolean not null default false;` (locks custom titles; everything works without it, but auto-titling may overwrite renames until it runs).
 - Supabase migration pending: `stay_search_cache` table (SQL handed over in chat) — required before flipping `STAY_PROVIDER=hotelbeds`, else every search burns live quota.
 - Pre-launch: Hotelbeds Content API enrichment — cached hotel details (amenities, distances, photos) to fill the availability-only gaps on real stay cards.
@@ -49,4 +49,5 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - Verify locally: `npm run test:unit` (Tier U — free, ~5s, part of the definition of done on EVERY change) + type-check + `npm run build` + preview DOM/computed-style checks. NOTE: the harness preview can't render animations, WebGL, or screenshots — flag those for the user's live review.
 - Tier B (behavior harness, "robot Max" — multi-turn conversations vs the chat route with model-call cost) is an approved DESIGN but shelved: implement only if the user pulls the trigger (details in `memory/robot-max-behavior-suite`).
 - Small focused commits; push to `main`. Temp preview/verification routes are deleted before their commit.
+- EVERY Supabase table handover includes GRANT statements (at minimum `grant all on table X to service_role;`) — missing grants on `stay_search_cache` silently killed the cache with 42501 on every write from creation until 2026-07-20 (every search burned live quota). Grants audit ran 2026-07-20.
 - Do not touch without asking: auth, DB, API-route logic internals, provider-layer signatures.
