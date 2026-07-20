@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { BudgetLevel, StayOffer, StayQuery, StayType } from "./types";
 import { mockSearchStays } from "./mock";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { logDiag } from "@/lib/diag";
 
 // Hotelbeds APItude (Booking API) provider — availability-only in v1: no
 // amenities / walking distances (those come from the Content API enrichment,
@@ -262,9 +263,7 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   }
 
   if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
-    console.warn(
-      "Hotelbeds daily call budget reached — serving labeled mock data instead.",
-    );
+    await logDiag("stays_quota_fallback", { destination: query.destination });
     return mockSearchStays(query);
   }
 

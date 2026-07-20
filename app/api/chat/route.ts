@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAnthropic, CONCIERGE_MODEL, NAMER_MODEL } from "@/lib/anthropic";
 import { detectReplyLanguage } from "@/lib/language";
 import { sanitizeTripTitle } from "@/lib/trip-title";
+import { logDiag } from "@/lib/diag";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
 import { searchStays, IS_MOCK_STAY_PROVIDER } from "@/lib/stays/provider";
@@ -214,6 +215,7 @@ async function runFlightSearch(input: unknown): Promise<string> {
     return JSON.stringify({ mock: IS_MOCK_PROVIDER, offers });
   } catch (err) {
     console.error("Flight search failed:", err);
+    await logDiag("flight_search_error", { message: String(err).slice(0, 300) });
     return "The flight search is unavailable right now. Apologize briefly in this turn's reply language and offer to try again.";
   }
 }
@@ -262,6 +264,7 @@ async function runStaySearch(input: unknown): Promise<string> {
     return JSON.stringify({ mock, offers, ...(deal ? { deal } : {}) });
   } catch (err) {
     console.error("Stay search failed:", err);
+    await logDiag("stay_search_error", { message: String(err).slice(0, 300) });
     if (err instanceof Error && err.message.includes("latitude")) {
       return "Invalid search: include the destination's latitude and longitude in the tool call and try again.";
     }
@@ -617,34 +620,47 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
           for (const block of finalMsg.content) {
             if (block.type !== "tool_use") continue;
+            const known =
+              block.name === "search_flights" ||
+              block.name === "search_stays" ||
+              block.name === "remember_preference";
+            const result =
+              block.name === "search_flights"
+                ? await runFlightSearch(block.input)
+                : block.name === "search_stays"
+                  ? await runStaySearch(block.input)
+                  : block.name === "remember_preference"
+                    ? await rememberPreference(
+                        admin,
+                        user.id,
+                        trip.id,
+                        block.input,
+                      )
+                    : "Unknown tool.";
+            // Every tool call self-reports (name + outcome) to diag_events —
+            // diagnosis is one SQL query, never a log-window hunt.
+            const ok = result.startsWith("{") || result.startsWith("Saved");
+            await logDiag("tool_call", {
+              tool: block.name,
+              ok,
+              ...(ok ? {} : { note: result.slice(0, 160) }),
+              trip: trip.id,
+            });
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,
-              content:
-                block.name === "search_flights"
-                  ? await runFlightSearch(block.input)
-                  : block.name === "search_stays"
-                    ? await runStaySearch(block.input)
-                    : block.name === "remember_preference"
-                      ? await rememberPreference(
-                          admin,
-                          user.id,
-                          trip.id,
-                          block.input,
-                        )
-                      : "Unknown tool.",
-              is_error:
-                block.name === "search_flights" ||
-                block.name === "search_stays" ||
-                block.name === "remember_preference"
-                  ? undefined
-                  : true,
+              content: result,
+              is_error: known ? undefined : true,
             });
           }
           anthropicMessages.push({ role: "user", content: toolResults });
         }
       } catch (err) {
         console.error("Chat stream error:", err);
+        await logDiag("stream_error", {
+          message: String(err).slice(0, 300),
+          trip: trip.id,
+        });
         controller.enqueue(
           encoder.encode("\n\n[Sorry — I ran into an error. Please try again.]"),
         );
@@ -714,6 +730,10 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
       }
     } catch (err) {
       console.error("Trip titling failed:", err);
+      await logDiag("title_error", {
+        message: String(err).slice(0, 300),
+        trip: trip.id,
+      });
     }
   });
 
