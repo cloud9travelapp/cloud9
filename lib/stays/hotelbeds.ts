@@ -1,5 +1,4 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import type {
   BudgetLevel,
   Room,
@@ -9,6 +8,7 @@ import type {
   StayType,
 } from "./types";
 import { mockSearchStays } from "./mock";
+import { HOTELBEDS_BASE_URL, hotelbedsHeaders } from "./hotelbeds-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logDiag } from "@/lib/diag";
 
@@ -23,19 +23,10 @@ import { logDiag } from "@/lib/diag";
 // seeded mock — whose "mock-" offer ids make the route re-label the cards as
 // test data — instead of burning the quota dry.
 
-const BASE_URL =
-  process.env.HOTELBEDS_BASE_URL || "https://api.test.hotelbeds.com";
 const SEARCH_RADIUS_KM = 15;
 const MAX_HOTELS = 40; // fetched + cached; cards show at most 8 after filtering
 const DAILY_CALL_BUDGET = 45; // stop shy of the 50/day evaluation limit
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
-/** APItude auth: SHA-256 hex of apiKey + secret + unix-seconds. */
-function signature(apiKey: string, secret: string): string {
-  return createHash("sha256")
-    .update(`${apiKey}${secret}${Math.floor(Date.now() / 1000)}`)
-    .digest("hex");
-}
 
 // Minimal slice of the availability response we consume.
 export type HotelbedsRate = {
@@ -383,11 +374,7 @@ async function liveCallsToday(): Promise<number> {
 }
 
 export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[]> {
-  const apiKey = process.env.HOTELBEDS_API_KEY;
-  const secret = process.env.HOTELBEDS_SECRET;
-  if (!apiKey || !secret) {
-    throw new Error("Missing HOTELBEDS_API_KEY / HOTELBEDS_SECRET env vars.");
-  }
+  const headers = hotelbedsHeaders(); // throws when keys are missing
   if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
     throw new Error(
       "Hotelbeds search needs the destination's latitude and longitude.",
@@ -405,14 +392,9 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
     return mockSearchStays(query);
   }
 
-  const res = await fetch(`${BASE_URL}/hotel-api/1.0/hotels`, {
+  const res = await fetch(`${HOTELBEDS_BASE_URL}/hotel-api/1.0/hotels`, {
     method: "POST",
-    headers: {
-      "Api-key": apiKey,
-      "X-Signature": signature(apiKey, secret),
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers,
     body: JSON.stringify({
       stay: { checkIn: query.checkIn, checkOut: query.checkOut },
       occupancies: [
