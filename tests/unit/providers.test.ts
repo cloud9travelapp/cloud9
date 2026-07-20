@@ -3,6 +3,7 @@ import { mockSearchFlights } from "@/lib/flights/mock";
 import { mockSearchStays } from "@/lib/stays/mock";
 import {
   filterForBudget,
+  haversineKm,
   mapHotels,
   starsFrom,
   typeFrom,
@@ -74,6 +75,36 @@ describe("hotelbeds mapping", () => {
     expect(artemide.pricePerNight).toBe(128); // 640.50 / 5 nights, rounded
     expect(artemide.totalPrice).toBe(641);
     expect(offers.find((o) => o.name === "Palazzo Luxe")!.area).toBe("Rome"); // destinationName fallback
+  });
+
+  it("computes distance-from-center when both coordinate pairs exist", () => {
+    // Milan Duomo → San Siro is ~5.4 km straight-line
+    const km = haversineKm(45.4642, 9.19, 45.4781, 9.124);
+    expect(km).toBeGreaterThan(5.0);
+    expect(km).toBeLessThan(5.8);
+    expect(haversineKm(45.4642, 9.19, 45.4642, 9.19)).toBe(0);
+
+    const geoQuery = { ...QUERY, latitude: 45.4642, longitude: 9.19 };
+    const offers = mapHotels(
+      [
+        { code: 1, name: "Near Duomo", categoryName: "4 STARS", minRate: "500", latitude: "45.4650", longitude: "9.1910" },
+        { code: 2, name: "San Siro Hotel", categoryName: "4 STARS", minRate: "200", latitude: "45.4781", longitude: "9.1240" },
+        { code: 3, name: "No Coords Inn", categoryName: "3 STARS", minRate: "300" },
+      ],
+      geoQuery,
+    );
+    const near = offers.find((o) => o.name === "Near Duomo")!;
+    const far = offers.find((o) => o.name === "San Siro Hotel")!;
+    expect(near.distanceKm).toBeLessThan(0.3);
+    expect(far.distanceKm).toBeGreaterThan(5);
+    expect(far.distanceKm).toBe(Math.round(far.distanceKm! * 10) / 10); // 0.1 rounding
+    expect(offers.find((o) => o.name === "No Coords Inn")!.distanceKm).toBeUndefined();
+    // without search coordinates, no distances at all
+    const noGeo = mapHotels(
+      [{ code: 1, name: "X", categoryName: "3 STARS", minRate: "100", latitude: "45.5", longitude: "9.2" }],
+      QUERY,
+    );
+    expect(noGeo[0].distanceKm).toBeUndefined();
   });
 
   it("parses stars and types from category names", () => {

@@ -36,6 +36,8 @@ export type HotelbedsHotel = {
   categoryName?: string;
   zoneName?: string;
   destinationName?: string;
+  latitude?: string | number;
+  longitude?: string | number;
   minRate?: string | number;
   currency?: string;
 };
@@ -64,6 +66,22 @@ function nightsBetween(checkIn: string, checkOut: string): number {
   return Math.max(1, Math.round((b - a) / 86400000));
 }
 
+/** Straight-line distance between two coordinates, in km (haversine). */
+export function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
+}
+
 export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer[] {
   const nights = nightsBetween(query.checkIn, query.checkOut);
   const rooms = Math.max(1, query.rooms ?? 1);
@@ -71,6 +89,17 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
   for (const h of hotels) {
     const total = Number(h.minRate); // minRate = whole-stay price, often a string
     if (!h.name || !Number.isFinite(total) || total <= 0) continue;
+    // Hotel coordinates arrive as strings; the searched point is the city
+    // center per the tool contract, so distanceKm = "from center" in v1.
+    const hLat = Number(h.latitude);
+    const hLon = Number(h.longitude);
+    const distanceKm =
+      Number.isFinite(hLat) &&
+      Number.isFinite(hLon) &&
+      typeof query.latitude === "number" &&
+      typeof query.longitude === "number"
+        ? Math.round(haversineKm(query.latitude, query.longitude, hLat, hLon) * 10) / 10
+        : undefined;
     offers.push({
       id: `hb-${h.code ?? offers.length}`,
       name: h.name,
@@ -78,6 +107,7 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
       area: h.zoneName || h.destinationName || query.destination,
       stars: starsFrom(h.categoryName),
       amenities: [], // availability-only; Content API enrichment is a roadmap item
+      distanceKm,
       pricePerNight: Math.max(1, Math.round(total / nights / rooms)),
       totalPrice: Math.round(total),
       currency: h.currency || "EUR",

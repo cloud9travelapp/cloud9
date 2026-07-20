@@ -27,6 +27,7 @@ export type StayOffer = {
   amenities: string[]; // neutral keys, e.g. ["pool","breakfast","seaview"]; may be empty (availability-only providers)
   distanceKey?: string; // POI key: beach | center | oldTown | station | park
   distanceMinutes?: number; // walking minutes to that POI
+  distanceKm?: number; // straight-line km from the searched point (city center)
   pricePerNight: number;
   totalPrice: number; // pricePerNight × nights × rooms
   currency: string;
