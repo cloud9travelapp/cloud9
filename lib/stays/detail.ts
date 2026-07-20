@@ -32,6 +32,7 @@ export async function getStayDetail(hotelId: string): Promise<StayDetail> {
       reviewScore: content?.reviewScore,
       reviewCount: content?.reviewCount,
       rooms: captured?.rooms ?? null,
+      currency: captured?.currency,
       pricedFor: captured
         ? {
             checkIn: captured.checkIn,

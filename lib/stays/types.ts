@@ -71,5 +71,6 @@ export type StayDetail = {
   reviewScore?: number; // 0-10, only when the Content API carries review data
   reviewCount?: number;
   rooms: Room[] | null; // null = no valid captured rooms (stale/absent)
+  currency?: string; // room-rate currency (from the capturing search)
   pricedFor?: { checkIn: string; checkOut: string; guests: number };
 };

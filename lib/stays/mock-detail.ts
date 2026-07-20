@@ -74,6 +74,7 @@ export async function mockStayDetail(hotelId: string): Promise<StayDetail> {
       room("Deluxe with Balcony", 1.35, ["balcony"], true),
       room("Junior Suite", 1.8, ["suite"], false),
     ],
+    currency: "USD",
     pricedFor: {
       checkIn: isoDaysFromNow(checkInOffset),
       checkOut: isoDaysFromNow(checkInOffset + 4),

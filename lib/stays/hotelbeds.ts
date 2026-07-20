@@ -254,6 +254,7 @@ type CapturedRooms = {
   checkIn: string;
   checkOut: string;
   guests: number;
+  currency: string;
   capturedAt: string;
   rooms: Room[];
 };
@@ -279,6 +280,7 @@ async function captureRooms(
                 checkIn: query.checkIn,
                 checkOut: query.checkOut,
                 guests: query.guests ?? 2,
+                currency: h.currency || "EUR",
                 capturedAt: new Date().toISOString(),
                 rooms,
               } satisfies CapturedRooms,
