@@ -52,6 +52,23 @@ describe("detectReplyLanguage (approved policy)", () => {
     expect(detectReplyLanguage("Selected: El Al, TLV→JFK, 1 stop, $530", enConvo)).toBe("other");
   });
 
+  it("long Latin hotel names can't flip a select post — the Milano bug", () => {
+    // 7 Latin vs 3 Hebrew tokens = exactly 0.70 Latin share; the select
+    // prefix must win before dominance counting even runs.
+    expect(
+      detectReplyLanguage(
+        "בחרתי: Idea Hotel Milano San Siro, Milan, 4 כוכבים, EUR 44 ללילה",
+        heConvo,
+      ),
+    ).toBe("he");
+    expect(
+      detectReplyLanguage(
+        "Selected: מלון דן תל אביב, Tel Aviv, 5 stars, ILS 900 per night",
+        enConvo,
+      ),
+    ).toBe("other");
+  });
+
   it("assistant block JSON never skews the history fallback", () => {
     const convo = [
       { role: "user" as const, content: "טיסה לרומא באוגוסט" },
