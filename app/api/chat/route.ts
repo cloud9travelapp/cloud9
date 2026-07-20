@@ -345,6 +345,7 @@ export async function POST(request: Request) {
 Who you're talking to: ${firstName}. ${prefLine}
 
 Today's date is ${today}. Resolve every date the user gives to a real, FUTURE date in YYYY-MM-DD — never a past year. If they name a month/day with no year, use the next future occurrence.
+When their dates arrive as a RELATIVE phrase ("שני עד שישי שבוע הבא", "next weekend"), your next message must STATE the resolved dates inline — day-first with the night count ("27-07 עד 31-07, 4 לילות") — folded into whatever you were about to say (usually the budget question). A statement, not a question: they see the resolution and can object, with zero added friction. Ask a confirming question ONLY when the phrase is genuinely ambiguous ("סופ״ש הקרוב" said on a weekend, "בחגים") — and then with options, not open-ended.
 
 How you talk:
 - Sound like a skilled human travel professional — efficient, clear, courteous. Not stiff or corporate, but not a chatty friend either.
