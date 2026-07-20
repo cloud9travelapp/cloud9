@@ -410,6 +410,33 @@ body {
   }
 }
 
+/* Cloud-soft scrollbars: thin, rounded, phase-toned thumb, no track. Applied
+   where scrolling is real but chrome shouldn't shout (modal panel). */
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border) transparent;
+}
+.scroll-soft::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-soft::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: 9999px;
+}
+
+/* Fully hidden scrollbar — only where the affordance is obvious without it
+   (snap galleries with peeking next item). */
+.scroll-hide {
+  scrollbar-width: none;
+}
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Hotel-detail modal — gentle float-in, static under reduced motion. */
 @keyframes modal-in {
   from {

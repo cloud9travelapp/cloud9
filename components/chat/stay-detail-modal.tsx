@@ -7,10 +7,15 @@
 // mini-cards show board variants as one inline choice; a room pick posts a
 // structured message through the same send flow as CardSelect.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Room, RoomRate, StayDetail } from "@/lib/stays/types";
 import { amenityLabel, LoadingDots, type Lang } from "./message-parts";
 import { dmy } from "@/lib/chat/dates";
+
+/** TEMP (design round): visual variants under review on /preview/modal —
+ *  the losing variants get removed once Max picks. */
+export type CloseVariant = "ghost" | "circle" | "puff";
+export type GalleryNav = "fade" | "dots";
 
 const T = {
   he: {
@@ -73,6 +78,22 @@ function boardLabel(lang: Lang, rate: RoomRate): string {
   return T[lang].board[rate.board] ?? rate.boardName ?? rate.board;
 }
 
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 export function StayDetailModal({
   hotelId,
   hotelName,
@@ -80,6 +101,8 @@ export function StayDetailModal({
   onClose,
   onSelectRoom,
   preload,
+  closeVariant = "circle",
+  galleryNav = "fade",
 }: {
   hotelId: string;
   hotelName: string;
@@ -88,10 +111,14 @@ export function StayDetailModal({
   onSelectRoom: (choice: string) => void;
   /** Preview/testing only: render this detail instead of fetching. */
   preload?: StayDetail;
+  closeVariant?: CloseVariant;
+  galleryNav?: GalleryNav;
 }) {
   const L = T[lang];
   const [detail, setDetail] = useState<StayDetail | null>(preload ?? null);
   const [failed, setFailed] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (preload) return;
@@ -148,7 +175,7 @@ export function StayDetailModal({
       {/* panel */}
       <div
         dir={lang === "he" ? "rtl" : "ltr"}
-        className="modal-enter relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-c-border bg-c-surface shadow-2xl"
+        className="modal-enter scroll-soft relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-c-border bg-c-surface shadow-2xl"
       >
         {/* header */}
         <div className="sticky top-0 z-[1] flex items-start justify-between gap-3 border-b border-c-border bg-c-surface/95 px-5 py-4 backdrop-blur">
@@ -168,16 +195,38 @@ export function StayDetailModal({
               </p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={L.close}
-            className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-accent-soft hover:text-c-ink"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+          {closeVariant === "puff" ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={L.close}
+              className="group relative flex h-9 w-10 flex-none items-center justify-center"
+            >
+              {/* mini cloud — same puff construction as CloudBubble */}
+              <span aria-hidden className="absolute inset-x-0 bottom-0 top-2.5 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
+              <span aria-hidden className="absolute start-1 top-1 h-4 w-4 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
+              <span aria-hidden className="absolute end-1.5 top-0.5 h-3 w-3 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
+              <XIcon className="relative z-[1] mt-1 h-3.5 w-3.5 text-c-accent transition-colors group-hover:text-c-on-accent" />
+            </button>
+          ) : closeVariant === "circle" ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={L.close}
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-c-accent-soft text-c-accent transition-colors hover:bg-c-accent hover:text-c-on-accent"
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={L.close}
+              className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-accent-soft hover:text-c-ink"
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         <div className="px-5 py-4">
@@ -187,19 +236,61 @@ export function StayDetailModal({
             <div className="flex justify-center py-10"><LoadingDots /></div>
           ) : (
             <>
-              {/* gallery — clean, scroll-snap, only when photos exist */}
+              {/* gallery — full-bleed to the panel edge so photos breathe;
+                  scrollbar hidden (the peeking next photo IS the affordance),
+                  nav = edge fades or snap dots (variant under review) */}
               {detail.images.length > 0 ? (
-                <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1">
-                  {detail.images.map((src) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={src}
-                      src={src}
-                      alt=""
-                      loading="lazy"
-                      className="h-44 w-64 flex-none snap-center rounded-2xl object-cover"
-                    />
-                  ))}
+                <div className="relative -mx-5">
+                  <div
+                    ref={galleryRef}
+                    onScroll={() => {
+                      const el = galleryRef.current;
+                      if (!el) return;
+                      setActiveImage(
+                        Math.min(
+                          detail.images.length - 1,
+                          Math.round(Math.abs(el.scrollLeft) / 264),
+                        ),
+                      );
+                    }}
+                    className="scroll-hide flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-1"
+                  >
+                    {detail.images.map((src) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={src}
+                        src={src}
+                        alt=""
+                        loading="lazy"
+                        className="h-44 w-64 flex-none snap-center rounded-2xl object-cover"
+                      />
+                    ))}
+                  </div>
+                  {galleryNav === "fade" ? (
+                    <>
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 left-0 w-6"
+                        style={{ background: "linear-gradient(to right, var(--c-surface), transparent)" }}
+                      />
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 right-0 w-6"
+                        style={{ background: "linear-gradient(to left, var(--c-surface), transparent)" }}
+                      />
+                    </>
+                  ) : (
+                    <div className="mt-2 flex justify-center gap-1.5">
+                      {detail.images.map((_, i) => (
+                        <span
+                          key={i}
+                          className={`h-1.5 rounded-full transition-all ${
+                            i === activeImage ? "w-4 bg-c-accent" : "w-1.5 bg-c-border"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
 
