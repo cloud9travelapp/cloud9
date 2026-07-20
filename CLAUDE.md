@@ -44,6 +44,12 @@ AI travel-planning web app. Next.js 16 (App Router, Turbopack) · React 19 · Ty
 - Pre-launch: footer legal links; connect the cloud9app.io domain.
 - External: Duffel reply — decision Thu 2026-07-09 (else follow-up + Amadeus test account).
 
+## Installed skills (`.claude/skills/`, discoverable from session start)
+- **webapp-testing** (Anthropic): Playwright-driven browser verification — after UI/flow changes, drive the app (screenshots, DOM checks, console logs) BEFORE handing to Max. Constraint: production is auth-gated and worktrees have no `.env.local`, so this covers the landing page + non-auth pages + component states on the local dev server; signed-in chat flows stay with Max's live testing (or the shelved Tier B harness). One-time local deps on first use: `pip install playwright` + `playwright install chromium`.
+- **diagnosing-bugs** (mattpocock): feedback-loop-first diagnosis (tight pass/fail signal, ranked hypotheses, bisection). MERGES with — never replaces — the investigate→findings→approval discipline: the skill governs HOW to investigate; findings still go to Max before any fix ships.
+- **supabase-postgres-best-practices** (Supabase): apply when designing schemas/migrations/RLS or reviewing DB performance; every table handover gets checked against it (grants + RLS + FK indexes are the recurring gaps).
+- Deferred by decision (do NOT install unprompted): TDD skill, improve-codebase-architecture.
+
 ## Working process
 - Non-trivial features: short plan → **WAIT for approval** → implement.
 - Verify locally: `npm run test:unit` (Tier U — free, ~5s, part of the definition of done on EVERY change) + type-check + `npm run build` + preview DOM/computed-style checks. NOTE: the harness preview can't render animations, WebGL, or screenshots — flag those for the user's live review.

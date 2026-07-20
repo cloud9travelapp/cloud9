@@ -38,8 +38,9 @@ yarn-error.log*
 .vercel
 
 # skill install artifacts (local tooling, not app code)
+# NOTE: .claude/skills/ IS committed (project capabilities; sessions run in
+# fresh worktrees, so uncommitted skills would not survive to the next session)
 .agents/
-.claude/skills/
 skills-lock.json
 
 # typescript
