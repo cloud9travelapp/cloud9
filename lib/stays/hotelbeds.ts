@@ -86,14 +86,30 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
   return offers.sort((a, b) => a.pricePerNight - b.pricePerNight);
 }
 
-/** Budget bands filter locally — never as extra API calls. Falls back to the
- *  unfiltered list when a band would leave fewer than 3 options. */
+/**
+ * Budget bands are PRICE-first: rank terciles over the (cheapest-first)
+ * fetched set. Real inventory's star categories don't track price (Milan
+ * serves €42 "4 stars"), but the user's budget answer is about spend, so
+ * price is the primary signal. The luxury band adds a quality guard (≥4★
+ * when enough such offers exist) so an overpriced dump can't headline
+ * "לפנק את עצמי". Bands under 3 offers fall back to the full list; all
+ * filtering is local — never extra API calls.
+ */
 export function filterForBudget(offers: StayOffer[], budget?: BudgetLevel): StayOffer[] {
-  if (!budget) return offers;
-  const inBand = offers.filter((o) =>
-    budget === "budget" ? o.stars <= 3 : budget === "luxury" ? o.stars >= 4 : o.stars === 3 || o.stars === 4,
-  );
-  return inBand.length >= 3 ? inBand : offers;
+  if (!budget || offers.length < 4) return offers;
+  const t1 = Math.ceil(offers.length / 3);
+  const t2 = Math.ceil((2 * offers.length) / 3);
+  let band: StayOffer[];
+  if (budget === "budget") {
+    band = offers.slice(0, t1);
+  } else if (budget === "mid") {
+    band = offers.slice(t1, t2);
+  } else {
+    const top = offers.slice(t2);
+    const starred = top.filter((o) => o.stars >= 4);
+    band = starred.length >= 3 ? starred : top;
+  }
+  return band.length >= 3 ? band : offers;
 }
 
 /** Cache key: coordinates rounded to ~1km + stay shape. Budget level is NOT

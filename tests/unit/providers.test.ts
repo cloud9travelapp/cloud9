@@ -85,19 +85,45 @@ describe("hotelbeds mapping", () => {
     expect(typeFrom("4 STARS")).toBe("hotel");
   });
 
-  it("budget bands filter locally and fall back when a band is too thin", () => {
-    const offers = mapHotels(SAMPLE, QUERY);
-    expect(filterForBudget(offers, undefined)).toHaveLength(4);
-    // only 2 offers are 4★+ and only 2 are ≤3★ → both bands fall back to all
-    expect(filterForBudget(offers, "luxury")).toHaveLength(4);
-    expect(filterForBudget(offers, "budget")).toHaveLength(4);
-    // with a third ≤3★ offer, the budget band actually filters
-    const withCheap = mapHotels(
-      [...SAMPLE, { code: 12, name: "Pensione Roma", categoryName: "2 STARS", zoneName: "Termini", minRate: "250", currency: "EUR" }],
-      QUERY,
-    );
-    const budget = filterForBudget(withCheap, "budget");
-    expect(budget).toHaveLength(3);
-    expect(budget.every((o) => o.stars <= 3)).toBe(true);
+  it("budget bands are price terciles with a star guard on luxury", () => {
+    const offer = (i: number, price: number, stars: number) => ({
+      id: `o${i}`,
+      name: `H${i}`,
+      type: "hotel" as const,
+      area: "X",
+      stars,
+      amenities: [],
+      pricePerNight: price,
+      totalPrice: price * 4,
+      currency: "EUR",
+    });
+    // Milan-shaped set (cheapest-first, cheap "4★" present, pricey 2★ dump):
+    const stars = [4, 3, 2, 4, 3, 3, 4, 3, 4, 2, 4, 5];
+    const prices = [40, 45, 50, 60, 70, 80, 90, 110, 150, 200, 260, 320];
+    const offers = prices.map((p, i) => offer(i, p, stars[i]));
+
+    // budget = cheapest tercile by PRICE — the €40 "4★" belongs here now
+    const budget = filterForBudget(offers, "budget");
+    expect(budget.map((o) => o.pricePerNight)).toEqual([40, 45, 50, 60]);
+
+    // mid = middle tercile, stars irrelevant
+    expect(filterForBudget(offers, "mid").map((o) => o.pricePerNight)).toEqual([
+      70, 80, 90, 110,
+    ]);
+
+    // luxury = top tercile AND ≥4★ — the €200 2★ dump is excluded
+    expect(filterForBudget(offers, "luxury").map((o) => o.pricePerNight)).toEqual([
+      150, 260, 320,
+    ]);
+
+    // when the top tercile has too few 4★+, the guard yields to price-only
+    const flatStars = offers.map((o, i) => ({ ...o, stars: i >= 8 ? 3 : o.stars }));
+    expect(filterForBudget(flatStars, "luxury").map((o) => o.pricePerNight)).toEqual([
+      150, 200, 260, 320,
+    ]);
+
+    // tiny sets and no-budget pass through untouched
+    expect(filterForBudget(offers.slice(0, 3), "budget")).toHaveLength(3);
+    expect(filterForBudget(offers, undefined)).toHaveLength(12);
   });
 });
