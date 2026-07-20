@@ -37,3 +37,39 @@ export type StayOffer = {
    *  it (one teaser sentence). */
   deal?: { discountPct: number; comparableMedian: number };
 };
+
+// ── Detail layer (modal + get_hotel_details tool) ────────────────────────
+// Rooms are captured from the search response the moment it arrives (option
+// A: zero extra API calls; the future booking flow re-verifies fresh).
+// Content (photos/description/amenities) comes from the Content API, cached
+// permanently. StayOffer stays lean — details never ride search results.
+
+export type RoomRate = {
+  board: "RO" | "BB" | "HB" | "FB" | "AI" | "OTHER";
+  boardName?: string; // provider label, shown when board is OTHER
+  pricePerNight: number;
+  totalPrice: number;
+};
+
+export type Room = {
+  code: string;
+  name: string;
+  features: string[]; // neutral keys (balcony, seaView, terrace, suite)
+  rates: RoomRate[]; // cheapest rate per board, cheapest board first
+};
+
+export type StayDetail = {
+  mock: boolean;
+  hotelProvider: string;
+  hotelCode: string;
+  name?: string;
+  description?: string;
+  images: string[]; // absolute URLs, gallery order
+  amenities: string[]; // neutral keys (same vocabulary as cards)
+  address?: string;
+  area?: string;
+  reviewScore?: number; // 0-10, only when the Content API carries review data
+  reviewCount?: number;
+  rooms: Room[] | null; // null = no valid captured rooms (stale/absent)
+  pricedFor?: { checkIn: string; checkOut: string; guests: number };
+};

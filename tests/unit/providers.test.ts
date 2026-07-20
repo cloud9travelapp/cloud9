@@ -6,11 +6,13 @@ import {
   filterForBudget,
   haversineKm,
   mapHotels,
+  mapRooms,
   medianDistanceKm,
   selectByDistance,
   starsFrom,
   typeFrom,
   type HotelbedsHotel,
+  type HotelbedsRoom,
 } from "@/lib/stays/hotelbeds";
 import type { StayOffer } from "@/lib/stays/types";
 import type { StayQuery } from "@/lib/stays/types";
@@ -164,6 +166,41 @@ describe("hotelbeds mapping", () => {
     // best discount wins when several qualify
     const far50 = mk("f5", 60, 4, 14);
     expect(detectDeal([...shown, far40, far50], shown)?.id).toBe("f5");
+  });
+
+  it("maps rooms: cheapest rate per board, features parsed, cheapest-first", () => {
+    const raw: HotelbedsRoom[] = [
+      {
+        code: "DBL.ST",
+        name: "DOUBLE STANDARD",
+        rates: [
+          { net: "445.00", boardCode: "RO" },
+          { net: "485.00", boardCode: "BB" },
+          { net: "460.00", boardCode: "RO" }, // pricier duplicate board → dropped
+        ],
+      },
+      {
+        code: "DBL.BAL",
+        name: "DOUBLE WITH BALCONY SEA VIEW",
+        rates: [{ net: "520.00", boardCode: "BB" }],
+      },
+      { code: "JR.SUI", name: "JUNIOR SUITE", rates: [{ net: "bad" }] }, // no valid rates → dropped
+      { code: "X", name: "MYSTERY", rates: [{ net: 600, boardCode: "XX", boardName: "SPECIAL PLAN" }] },
+    ];
+    const rooms = mapRooms(raw, 5, 1); // 5 nights, 1 room
+    expect(rooms.map((r) => r.code)).toEqual(["DBL.ST", "DBL.BAL", "X"]);
+    const std = rooms[0];
+    expect(std.rates).toEqual([
+      { board: "RO", pricePerNight: 89, totalPrice: 445 },
+      { board: "BB", pricePerNight: 97, totalPrice: 485 },
+    ]);
+    expect(rooms[1].features).toEqual(["balcony", "seaView"]);
+    expect(rooms[2].rates[0]).toEqual({
+      board: "OTHER",
+      boardName: "SPECIAL PLAN",
+      pricePerNight: 120,
+      totalPrice: 600,
+    });
   });
 
   it("parses stars and types from category names", () => {

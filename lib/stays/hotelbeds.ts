@@ -1,6 +1,13 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import type { BudgetLevel, StayOffer, StayQuery, StayType } from "./types";
+import type {
+  BudgetLevel,
+  Room,
+  RoomRate,
+  StayOffer,
+  StayQuery,
+  StayType,
+} from "./types";
 import { mockSearchStays } from "./mock";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logDiag } from "@/lib/diag";
@@ -31,6 +38,16 @@ function signature(apiKey: string, secret: string): string {
 }
 
 // Minimal slice of the availability response we consume.
+export type HotelbedsRate = {
+  net?: string | number;
+  boardCode?: string;
+  boardName?: string;
+};
+export type HotelbedsRoom = {
+  code?: string;
+  name?: string;
+  rates?: HotelbedsRate[];
+};
 export type HotelbedsHotel = {
   code?: number;
   name?: string;
@@ -41,6 +58,7 @@ export type HotelbedsHotel = {
   longitude?: string | number;
   minRate?: string | number;
   currency?: string;
+  rooms?: HotelbedsRoom[];
 };
 type HotelbedsAvailability = {
   hotels?: { hotels?: HotelbedsHotel[] };
@@ -186,6 +204,123 @@ export function selectByDistance(
   return offers.filter((o) => isNear(o) || fill.has(o)); // keeps price order
 }
 
+const KNOWN_BOARDS = new Set(["RO", "BB", "HB", "FB", "AI"]);
+const ROOM_FEATURES: Array<[RegExp, string]> = [
+  [/BALCON/i, "balcony"],
+  [/SEA ?VIEW|OCEAN/i, "seaView"],
+  [/TERRACE/i, "terrace"],
+  [/SUITE/i, "suite"],
+];
+const MAX_ROOMS = 8;
+
+/**
+ * Compact per-room mapping from a hotel's availability rooms: cheapest rate
+ * per board (board variants render as one inline choice on the mini-card),
+ * neutral feature keys parsed from the room name, cheapest-first, capped.
+ * rateKeys are deliberately dropped — rooms captured at search time are for
+ * DISPLAY + selection-as-conversation; the booking round re-verifies fresh.
+ */
+export function mapRooms(
+  rawRooms: HotelbedsRoom[],
+  nights: number,
+  roomsCount: number,
+): Room[] {
+  const rooms: Room[] = [];
+  for (const r of rawRooms) {
+    if (!r.name) continue;
+    const byBoard = new Map<string, RoomRate>();
+    for (const rate of r.rates ?? []) {
+      const total = Number(rate.net);
+      if (!Number.isFinite(total) || total <= 0) continue;
+      const rawBoard = (rate.boardCode ?? "").trim().toUpperCase();
+      const board = (KNOWN_BOARDS.has(rawBoard) ? rawBoard : "OTHER") as RoomRate["board"];
+      const candidate: RoomRate = {
+        board,
+        ...(board === "OTHER" && rate.boardName ? { boardName: rate.boardName } : {}),
+        pricePerNight: Math.max(1, Math.round(total / nights / roomsCount)),
+        totalPrice: Math.round(total),
+      };
+      const existing = byBoard.get(board);
+      if (!existing || candidate.totalPrice < existing.totalPrice) {
+        byBoard.set(board, candidate);
+      }
+    }
+    if (byBoard.size === 0) continue;
+    const rates = [...byBoard.values()].sort((a, b) => a.pricePerNight - b.pricePerNight);
+    rooms.push({
+      code: r.code ?? r.name,
+      name: r.name,
+      features: ROOM_FEATURES.filter(([re]) => re.test(r.name!)).map(([, k]) => k),
+      rates,
+    });
+  }
+  return rooms
+    .sort((a, b) => a.rates[0].pricePerNight - b.rates[0].pricePerNight)
+    .slice(0, MAX_ROOMS);
+}
+
+type CapturedRooms = {
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  capturedAt: string;
+  rooms: Room[];
+};
+
+/** Rooms captured at search time, one row per hotel (last search wins). The
+ *  modal and the get_hotel_details tool read these — zero extra API calls. */
+async function captureRooms(
+  hotels: HotelbedsHotel[],
+  query: StayQuery,
+): Promise<void> {
+  try {
+    const nights = nightsBetween(query.checkIn, query.checkOut);
+    const roomsCount = Math.max(1, query.rooms ?? 1);
+    const rows = hotels
+      .filter((h) => h.code && (h.rooms?.length ?? 0) > 0)
+      .map((h) => {
+        const rooms = mapRooms(h.rooms!, nights, roomsCount);
+        return rooms.length === 0
+          ? null
+          : {
+              key: `hbrooms|${h.code}`,
+              offers: {
+                checkIn: query.checkIn,
+                checkOut: query.checkOut,
+                guests: query.guests ?? 2,
+                capturedAt: new Date().toISOString(),
+                rooms,
+              } satisfies CapturedRooms,
+              created_at: new Date().toISOString(),
+            };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length) {
+      await getSupabaseAdmin().from("stay_search_cache").upsert(rows);
+    }
+  } catch {
+    /* best-effort — rooms are an enhancement, never break the search */
+  }
+}
+
+/** Read a hotel's captured rooms (24h validity, matching the search cache). */
+export async function getCapturedRooms(
+  hotelCode: string,
+): Promise<CapturedRooms | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("stay_search_cache")
+      .select("offers, created_at")
+      .eq("key", `hbrooms|${hotelCode}`)
+      .single();
+    if (!data) return null;
+    if (Date.now() - Date.parse(data.created_at) > CACHE_TTL_MS) return null;
+    return data.offers as CapturedRooms;
+  } catch {
+    return null;
+  }
+}
+
 /** Cache key: coordinates rounded to ~1km + stay shape. Budget level is NOT
  *  in the key — the full list is cached and bands are filtered afterwards. */
 function cacheKey(query: StayQuery): string {
@@ -228,8 +363,10 @@ async function cachePut(key: string, offers: StayOffer[]): Promise<void> {
   }
 }
 
-/** Live calls today ≈ cache rows written since UTC midnight (each live call
- *  writes exactly one row; a TTL refresh re-dates its row, still counted). */
+/** Live calls today ≈ SEARCH cache rows written since UTC midnight (each live
+ *  call writes exactly one "hb1|" row; a TTL refresh re-dates its row, still
+ *  counted). Scoped by key prefix — per-hotel "hbrooms|" rows and diag rows
+ *  must NOT inflate the count. */
 async function liveCallsToday(): Promise<number> {
   try {
     const midnight = new Date();
@@ -237,6 +374,7 @@ async function liveCallsToday(): Promise<number> {
     const { count, error } = await getSupabaseAdmin()
       .from("stay_search_cache")
       .select("key", { count: "exact", head: true })
+      .like("key", "hb1|%")
       .gte("created_at", midnight.toISOString());
     return error ? 0 : (count ?? 0);
   } catch {
@@ -303,8 +441,12 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   // Verified 2026-07-20 (diag run, Sofia): availability responses carry NO
   // review data — TripAdvisor scores, if anywhere, live in the Content API
   // (checked in the detail-layer round). First-party reviews are primary.
-  const offers = mapHotels(data.hotels?.hotels ?? [], query);
+  const rawHotels = data.hotels?.hotels ?? [];
+  const offers = mapHotels(rawHotels, query);
   await cachePut(key, offers);
+  // Option A (approved): rooms ride the search response we already paid for —
+  // captured per hotel, zero extra API calls; booking re-verifies fresh.
+  await captureRooms(rawHotels, query);
   return finalizeOffers(offers, query);
 }
 
