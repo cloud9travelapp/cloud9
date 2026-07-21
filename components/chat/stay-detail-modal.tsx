@@ -13,9 +13,11 @@ import { amenityLabel, LoadingDots, type Lang } from "./message-parts";
 import { dmy } from "@/lib/chat/dates";
 
 /** TEMP (design round): visual variants under review on /preview/modal —
- *  the losing variants get removed once Max picks. */
-export type CloseVariant = "ghost" | "circle" | "puff";
-export type GalleryNav = "fade" | "dots";
+ *  the losing variants get removed once Max picks. All close variants share
+ *  Max's direction: soft minimal X (rounded caps), phase-tinted container,
+ *  gentle hover soften (slight grow/brighten). */
+export type CloseVariant = "circle" | "cloud" | "halo";
+export type GalleryNav = "fade" | "dotsBelow" | "dotsOverlay";
 
 const T = {
   he: {
@@ -91,6 +93,63 @@ function XIcon({ className }: { className?: string }) {
     >
       <path d="M18 6 6 18M6 6l12 12" />
     </svg>
+  );
+}
+
+/**
+ * The modal's close affordance — three variations on one taste (Max's brief):
+ * a soft minimal X with rounded caps, container tinted from the live phase
+ * palette, gentle hover soften (slight grow + brighten). Exported for the
+ * /preview/modal specimen sheet.
+ */
+export function ModalCloseButton({
+  variant,
+  label,
+  onClose,
+}: {
+  variant: CloseVariant;
+  label: string;
+  onClose: () => void;
+}) {
+  if (variant === "cloud") {
+    return (
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={label}
+        className="group relative flex h-9 w-11 flex-none items-center justify-center transition-transform duration-150 ease-out hover:scale-110 active:scale-95"
+      >
+        {/* subtle cloud: soft base + two quiet lobes, all phase-tinted */}
+        <span aria-hidden className="absolute inset-x-0 bottom-0.5 top-2.5 rounded-full bg-c-accent-soft transition-[filter] duration-150 group-hover:brightness-105" />
+        <span aria-hidden className="absolute start-1.5 top-1 h-5 w-5 rounded-full bg-c-accent-soft transition-[filter] duration-150 group-hover:brightness-105" />
+        <span aria-hidden className="absolute end-1.5 top-1.5 h-4 w-4 rounded-full bg-c-accent-soft transition-[filter] duration-150 group-hover:brightness-105" />
+        <XIcon className="relative z-[1] mt-0.5 h-4 w-4 text-c-accent" />
+      </button>
+    );
+  }
+  if (variant === "halo") {
+    return (
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={label}
+        className="group relative flex h-9 w-9 flex-none items-center justify-center text-c-accent transition-transform duration-150 ease-out hover:scale-110 active:scale-95"
+      >
+        {/* bare X; a soft phase-tinted halo breathes in on hover */}
+        <span aria-hidden className="absolute inset-0 scale-75 rounded-full bg-c-accent-soft opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:scale-100 group-hover:opacity-100" />
+        <XIcon className="relative z-[1] h-4 w-4" />
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label={label}
+      className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-c-accent-soft text-c-accent transition-[transform,filter] duration-150 ease-out hover:scale-110 hover:brightness-105 active:scale-95"
+    >
+      <XIcon className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -195,38 +254,11 @@ export function StayDetailModal({
               </p>
             ) : null}
           </div>
-          {closeVariant === "puff" ? (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={L.close}
-              className="group relative flex h-9 w-10 flex-none items-center justify-center"
-            >
-              {/* mini cloud — same puff construction as CloudBubble */}
-              <span aria-hidden className="absolute inset-x-0 bottom-0 top-2.5 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
-              <span aria-hidden className="absolute start-1 top-1 h-4 w-4 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
-              <span aria-hidden className="absolute end-1.5 top-0.5 h-3 w-3 rounded-full bg-c-accent-soft transition-colors group-hover:bg-c-accent" />
-              <XIcon className="relative z-[1] mt-1 h-3.5 w-3.5 text-c-accent transition-colors group-hover:text-c-on-accent" />
-            </button>
-          ) : closeVariant === "circle" ? (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={L.close}
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-c-accent-soft text-c-accent transition-colors hover:bg-c-accent hover:text-c-on-accent"
-            >
-              <XIcon className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={L.close}
-              className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-accent-soft hover:text-c-ink"
-            >
-              <XIcon className="h-4 w-4" />
-            </button>
-          )}
+          <ModalCloseButton
+            variant={closeVariant}
+            label={L.close}
+            onClose={onClose}
+          />
         </div>
 
         <div className="px-5 py-4">
@@ -279,6 +311,19 @@ export function StayDetailModal({
                         style={{ background: "linear-gradient(to left, var(--c-surface), transparent)" }}
                       />
                     </>
+                  ) : galleryNav === "dotsOverlay" ? (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                      <div className="flex items-center gap-1.5 rounded-full bg-c-surface/75 px-2.5 py-1.5 backdrop-blur-sm">
+                        {detail.images.map((_, i) => (
+                          <span
+                            key={i}
+                            className={`h-1.5 rounded-full transition-all ${
+                              i === activeImage ? "w-4 bg-c-accent" : "w-1.5 bg-c-border"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <div className="mt-2 flex justify-center gap-1.5">
                       {detail.images.map((_, i) => (
