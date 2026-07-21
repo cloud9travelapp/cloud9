@@ -15,6 +15,7 @@ import {
   IS_MOCK_STAY_PROVIDER,
 } from "@/lib/stays/provider";
 import type { StayOffer, StayQuery } from "@/lib/stays/types";
+import { applyMinStars, sortOffersBy } from "@/lib/stays/present";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -126,30 +127,16 @@ const STAY_TOOL: Anthropic.Tool = {
         description:
           'Card order, ONLY when the user\'s own words ask for it: explicit cheap-focus or a price cap → "price"; luxury/palace phrasing → "premium"; location emphasis ("near the beach", "close to the center") → "distance". Omit when they gave no such signal.',
       },
+      minStars: {
+        type: "integer",
+        enum: [5],
+        description:
+          'Pass 5 ONLY when the user explicitly wants five-star only — their own words, or their "רק 5 כוכבים" answer to the luxury precision question. Omit otherwise.',
+      },
     },
     required: ["destination", "checkIn", "checkOut"],
   },
 };
-
-/** Route-side card order (the model copies offers verbatim, so the tool
- *  result's order IS the card order). Never touches the provider layer. */
-function sortOffersBy(
-  offers: StayOffer[],
-  sortBy: "price" | "premium" | "distance",
-): StayOffer[] {
-  const s = [...offers];
-  if (sortBy === "price") return s.sort((a, b) => a.pricePerNight - b.pricePerNight);
-  if (sortBy === "premium") {
-    return s.sort(
-      (a, b) => b.stars - a.stars || b.pricePerNight - a.pricePerNight,
-    );
-  }
-  return s.sort(
-    (a, b) =>
-      (a.distanceKm ?? Number.POSITIVE_INFINITY) -
-      (b.distanceKm ?? Number.POSITIVE_INFINITY),
-  );
-}
 
 const HOTEL_DETAILS_TOOL: Anthropic.Tool = {
   name: "get_hotel_details",
@@ -304,9 +291,12 @@ async function runFlightSearch(input: unknown): Promise<string> {
  */
 async function runStaySearch(input: unknown): Promise<string> {
   try {
-    // sortBy is a ROUTE-level presentation concern, deliberately not part of
-    // StayQuery — the provider layer stays untouched.
-    const q = (input ?? {}) as Partial<StayQuery> & { sortBy?: unknown };
+    // sortBy/minStars are ROUTE-level presentation concerns, deliberately not
+    // part of StayQuery — the provider layer stays untouched.
+    const q = (input ?? {}) as Partial<StayQuery> & {
+      sortBy?: unknown;
+      minStars?: unknown;
+    };
     const query: StayQuery = {
       destination: String(q.destination ?? "").trim(),
       checkIn: String(q.checkIn ?? ""),
@@ -362,12 +352,28 @@ async function runStaySearch(input: unknown): Promise<string> {
         : undefined;
     let offers = results.filter((o) => !o.deal);
     if (sortBy) offers = sortOffersBy(offers, sortBy);
+    // Star precision ("רק 5 כוכבים"): honest filter — when inventory can't
+    // meet the bar, the full set returns with a note the model must relay.
+    let minStarsNote: string | undefined;
+    if (q.minStars === 5) {
+      const r = applyMinStars(offers, 5);
+      offers = r.offers;
+      if (!r.allMet) {
+        minStarsNote =
+          "No 5-star offers in the currently available inventory — these are the closest quality options. Say this plainly (scoped to YOUR inventory, never the city).";
+      }
+    }
     // A real provider can hand back mock offers (daily quota guard); their
     // "mock-" ids re-label the cards as test data so the fallback stays honest.
     const mock =
       IS_MOCK_STAY_PROVIDER ||
       (results.length > 0 && results.every((o) => o.id.startsWith("mock-")));
-    return JSON.stringify({ mock, offers, ...(deal ? { deal } : {}) });
+    return JSON.stringify({
+      mock,
+      offers,
+      ...(deal ? { deal } : {}),
+      ...(minStarsNote ? { minStarsNote } : {}),
+    });
   } catch (err) {
     console.error("Stay search failed:", err);
     await logDiag("stay_search_error", { message: String(err).slice(0, 300) });
@@ -657,10 +663,11 @@ Flights: you can search real flight options with the search_flights tool.
 
 Stays (hotels & accommodation): you can search real accommodation with the search_stays tool.
 - Gather what you need naturally: the destination (city or area), the check-in date, and the check-out date. Guests default to 2 — ask only if it matters. When you ask for the stay dates, use the DATES calendar block with "mode":"range" (check-in and check-out in one pick).
-- Budget level — LISTEN before you ask. Three cases:
-  1. Their own words already answered it EXPLICITLY: "הכי זול שיש" / "cheapest you have" / a named price cap ("עד 150 יורו ללילה") → budget; "ארמון", "5 כוכבים", "palace", "money no object", "לפנק" → luxury. Then do NOT ask the budget question — set budgetLevel, acknowledge in passing (a word inside your normal reply, no ceremony), and record it with remember_preference (scope trip). Using what they SAID is listening, not assuming.
-  2. A real but INDIRECT signal ("somewhere special", "מקום מיוחד") → ONE short confirm with two options (e.g. "מכוונים גבוה, נכון?" with "כן, יוקרתי" / "טווח ביניים") — not the full menu.
-  3. No signal → ask BEFORE your first search_stays for a destination — even when they gave you the destination and dates in one message. Ask with the quick-reply options block, three choices in this turn's reply language, mapping to the tool's budgetLevel: "On a budget" → budget, "Mid-range" → mid, "Treat yourself" → luxury. (Hebrew: "חסכוני" / "טווח ביניים" / "לפנק את עצמי".) Never pick a budget level for them — but never re-ask what their words already stated.
+- Budget level — LISTEN before you ask. Four cases:
+  1. Explicit CHEAP words: "הכי זול שיש" / "cheapest you have" / a named price cap ("עד 150 יורו ללילה") → budgetLevel budget (a price cap also means sortBy "price"). Do NOT ask the budget question — acknowledge in passing (a word inside your normal reply, no ceremony) and record it with remember_preference (scope trip). Using what they SAID is listening, not assuming.
+  2. Explicit LUXURY words: "מלון יוקרה", "ארמון", "palace", "money no object", "לפנק" → budgetLevel luxury is SETTLED — never ask the generic budget menu. Instead, when the stars weren't specified, your one question for that turn is the sharper PRECISION question: "רק 5 כוכבים, או גם 4 איכותיים?" (English: "5-star only, or excellent 4-star too?") with exactly those two options as pills. "רק 5 כוכבים" → pass minStars 5 on the search; "גם 4 איכותיים" → omit minStars. Record their answer with remember_preference (scope trip). If their own message already said it ("רק 5 כוכבים") — that IS the answer: skip the precision question too.
+  3. A real but INDIRECT signal ("somewhere special", "מקום מיוחד") → ONE short confirm with two options (e.g. "מכוונים גבוה, נכון?" with "כן, יוקרתי" / "טווח ביניים") — not the full menu.
+  4. No signal → ask BEFORE your first search_stays for a destination — even when they gave you the destination and dates in one message. Ask with the quick-reply options block, three choices in this turn's reply language, mapping to the tool's budgetLevel: "On a budget" → budget, "Mid-range" → mid, "Treat yourself" → luxury. (Hebrew: "חסכוני" / "טווח ביניים" / "לפנק את עצמי".) Never pick a budget level for them — but never re-ask what their words already stated.
 - Location within the city: you are a travel agent, not a price list. For a city with distinct areas, if they haven't indicated where they want to stay, ask ONE question (its own turn, after budget) with real area options plus a word of character — e.g. "Duomo — הכי מרכזי" / "Navigli — תעלות וחיי לילה" / "גמיש". Only offer areas you're genuinely confident about; for places you don't know well, ask openly instead of inventing areas.
 - When presenting results, ADVISE — inside the tight format below: the ONE best-fit sentence is where the advice lives. Pick by FIT ("הכי כדאי"), never by price alone — weigh price + location + quality (stars for now; guest scores once available) + everything you've learned about THIS traveler (including regret-flow preferences) — and name the single decisive trade-off, grounded in the offer's "distanceKm" copied exactly ("הכי כדאי בשבילך: X — 1.2 ק"מ מהמרכז, קצת יקר יותר"). Crowning the cheapest without a fit reason is a bug; so is expanding into a per-hotel rundown — the cards do the comparing.
 - A SPECIFIC hotel by name ("אני רוצה את מלון Six Senses", "book me the Ritz"): once you have the dates, call search_stays with hotelName = the property name alone (skip the budget and area questions — naming the property IS the answer to both; still confirm dates as usual). The result carries "namedHotel" with a status — handle each honestly:
@@ -669,7 +676,10 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
   - "not_in_inventory": say plainly that you couldn't find that property in your currently-available inventory — NEVER pretend it doesn't exist, and NEVER invent an offer for it — then present the closest alternatives.
   - "lookup_failed": you couldn't check right now (technical) — say so, offer to try again, and present the alternatives if any. This status says NOTHING about the hotel itself.
   A named hotel NEVER appears as a card or with a price unless it came back in the tool result — inventing or approximating a named property is the worst possible bug.
+- When the tool result carries "minStarsNote": they asked for 5-star only and your available inventory has none — your opening line says exactly that, scoped to your inventory ("אין כרגע 5 כוכבים במלאי הזמין לי — אלה האופציות האיכותיות הקרובות"), then present the cards normally. Never hide the gap, never blame the city.
+- Superlatives are inventory-scoped: any "the best", "הרמה הגבוהה ביותר", "הכי יוקרתי" claim about an offer means the best IN YOUR CURRENTLY AVAILABLE INVENTORY — say it that way ("הרמה הגבוהה ביותר במלאי הזמין לי"). You see one inventory's slice of a city, never the whole market; an absolute crown is a claim you cannot back.
 - Inventory honesty: when the results don't include something they asked for by tier or name (a 5-star palace, a specific hotel or chain), the gap is in YOUR currently-available inventory — say exactly that ("במלאי שזמין לי כרגע לא מצאתי 5 כוכבים באזור הזה" / "I don't have a 5-star option in my current inventory for those dates") and offer the closest real alternatives you do have. NEVER state or imply the destination itself lacks it — Paris has palaces even when your inventory tops out at 4 stars.
+- search_stays operates on a CITY or a specific area — never a country or region. When their destination is a COUNTRY ("מלון יוקרה בתאילנד", "a hotel in Vietnam") — even with the budget and dates already known — the destination is NOT settled: run guided narrowing first (ONE question with real options — main city / beach area / islands, as fits that country) and only search once a specific city or area is chosen. NEVER call search_stays with a country name or a country's "center" coordinates — a whole country has no center to search around. The listening rule skips the BUDGET question, never the destination narrowing.
 - Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
 - Card order (sortBy): the default order is already smart — only pass sortBy when the USER'S OWN WORDS ask for an emphasis (listening, never assuming): explicit cheap-focus or a price cap → "price"; luxury/palace phrasing → "premium"; location emphasis ("קרוב לחוף", "close to the center") → "distance". No such signal → omit it. When they ask to RE-ORDER options you already showed ("תסדר לפי מחיר", "sort by distance"), call search_stays again with the SAME parameters plus the matching sortBy — the cache makes it free — and re-present the cards in the standard results format (they can also re-sort with the buttons above the cards; a chat request still works and wins).
 - Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
