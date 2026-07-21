@@ -21,6 +21,7 @@ import {
 } from "./message-parts";
 import { StayDetailModal } from "./stay-detail-modal";
 import {
+  collectShownStayIds,
   hasErrorMarker,
   parseAssistantMessage,
   sortStayOffers,
@@ -111,6 +112,7 @@ export function StreamedText({ text }: { text: string }) {
 function StayStack({
   stays,
   moreKey,
+  sessionSeenIds,
   isHearted,
   onToggleHeart,
   onSelect,
@@ -119,6 +121,10 @@ function StayStack({
   stays: StaysPayload;
   /** The server's <<MORE>> ticket — renders the "show more" button. */
   moreKey: string | null;
+  /** Every stay-offer id already shown ANYWHERE in this conversation — the
+   *  exclusion seed, so batches never repeat across turns (live bug: a
+   *  re-search's show-more re-served an earlier stack's hearted hotel). */
+  sessionSeenIds: string[];
   isHearted: (offerId: string) => boolean;
   onToggleHeart: (offer: StayOfferView) => void;
   onSelect: (choice: string) => void;
@@ -133,7 +139,9 @@ function StayStack({
   const [moreState, setMoreState] = useState<
     "idle" | "loading" | "exhausted" | "stale"
   >("idle");
-  const seenRef = useRef<string[]>(stays.offers.map((o) => o.id));
+  const seenRef = useRef<string[]>([
+    ...new Set([...sessionSeenIds, ...stays.offers.map((o) => o.id)]),
+  ]);
 
   async function showMore() {
     if (!moreKey) return;
@@ -212,7 +220,8 @@ export default function ChatClient({
   favorites: TripFavorite[];
   onToggleFavorite: (
     tripId: string | null,
-    offer: StayOfferView,
+    itemType: "stay" | "flight",
+    item: { id: string } & Record<string, unknown>,
     lang: Lang,
   ) => void;
   /** A favorite tapped in the sidebar drawer — open its detail modal. */
@@ -385,7 +394,7 @@ export default function ChatClient({
           lang={detailFor.lang}
           hearted={isFavorite(favorites, detailFor.offer.id)}
           onToggleHeart={() =>
-            onToggleFavorite(currentTripId, detailFor.offer, detailFor.lang)
+            onToggleFavorite(currentTripId, "stay", detailFor.offer, detailFor.lang)
           }
           onClose={() => setDetailFor(null)}
           onSelectRoom={(choice) => {
@@ -531,6 +540,15 @@ export default function ChatClient({
                           offer={offer}
                           mock={flights.mock}
                           lang={flights.lang}
+                          hearted={isFavorite(favorites, offer.id)}
+                          onToggleHeart={() =>
+                            onToggleFavorite(
+                              currentTripId,
+                              "flight",
+                              offer,
+                              flights.lang,
+                            )
+                          }
                           onSelect={(s) => void send(s)}
                         />
                       ))}
@@ -540,9 +558,12 @@ export default function ChatClient({
                     <StayStack
                       stays={stays}
                       moreKey={splitMore(m.content)?.key ?? null}
+                      sessionSeenIds={collectShownStayIds(
+                        messages.map((msg) => msg.content),
+                      )}
                       isHearted={(id) => isFavorite(favorites, id)}
                       onToggleHeart={(offer) =>
-                        onToggleFavorite(currentTripId, offer, stays.lang)
+                        onToggleFavorite(currentTripId, "stay", offer, stays.lang)
                       }
                       onSelect={(s) => void send(s)}
                       onOpenDetail={(offer) =>

@@ -18,6 +18,7 @@ import {
 } from "@/lib/stays/provider";
 import type { StayOffer, StayQuery } from "@/lib/stays/types";
 import { applyMinStars, nextStayBatch, sortOffersBy } from "@/lib/stays/present";
+import { stripMoreBlock } from "@/lib/chat/blocks";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -888,7 +889,12 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
   ];
 
   const anthropicMessages: Anthropic.MessageParam[] = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
+    // MORE tickets are persisted for the client but are machine data — the
+    // model's history must never contain them (imitation risk).
+    ...history.map((m) => ({
+      role: m.role,
+      content: m.role === "assistant" ? stripMoreBlock(m.content) : m.content,
+    })),
     { role: "user", content: message },
   ];
 
@@ -991,14 +997,14 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
           }
           anthropicMessages.push({ role: "user", content: toolResults });
         }
-        // Server-authored, NOT saved into assistantText: the button lives
-        // until reload; the model's history stays free of machine keys.
+        // Server-authored and PERSISTED (appended to assistantText) so the
+        // "show more" button survives the new-trip navigation and reloads —
+        // the live bug where a fresh trip's first search lost its button.
+        // The model never sees it: history is stripped via stripMoreBlock.
         if (staysMoreKey) {
-          controller.enqueue(
-            encoder.encode(
-              `\n<<MORE>>\n${JSON.stringify({ key: staysMoreKey })}\n<<END>>`,
-            ),
-          );
+          const moreBlock = `\n<<MORE>>\n${JSON.stringify({ key: staysMoreKey })}\n<<END>>`;
+          assistantText += moreBlock;
+          controller.enqueue(encoder.encode(moreBlock));
         }
       } catch (err) {
         console.error("Chat stream error:", err);

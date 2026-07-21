@@ -446,11 +446,16 @@ export function FlightCard({
   offer,
   mock,
   lang,
+  hearted,
+  onToggleHeart,
   onSelect,
 }: {
   offer: FlightOfferView;
   mock: boolean;
   lang: Lang;
+  /** Real chat only: heart state + toggle (absent in the landing demo). */
+  hearted?: boolean;
+  onToggleHeart?: () => void;
   onSelect?: (choice: string) => void;
 }) {
   const L = LABELS[lang];
@@ -474,13 +479,22 @@ export function FlightCard({
       }`}
       onClick={expandable ? () => setExpanded((e) => !e) : undefined}
       aria-expanded={expandable ? expanded : undefined}>
-      {/* airline (left) + price (right) */}
+      {/* airline (left) + heart + price (right) */}
       <div dir="ltr" className="flex items-center justify-between gap-3">
         <span dir="auto" className="truncate text-sm font-semibold text-c-ink">
           {offer.airlineName}
         </span>
-        <span className="flex-none text-lg font-bold text-c-accent tabular-nums">
-          {price}
+        <span className="flex flex-none items-center gap-1">
+          {onToggleHeart ? (
+            <HeartButton
+              active={!!hearted}
+              onToggle={onToggleHeart}
+              label={hearted ? L.unheart : L.heart}
+            />
+          ) : null}
+          <span className="text-lg font-bold text-c-accent tabular-nums">
+            {price}
+          </span>
         </span>
       </div>
 

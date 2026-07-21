@@ -21,52 +21,71 @@ const FAVORITE_GROUP_LABELS: Record<FavoriteItemType, string> = {
   restaurant: "מסעדות שאהבתי",
 };
 
-/** One favorites row: name · ★ · price/night (+ test-data label), tap →
- *  detail modal; the filled heart unhearts. Generic — renders any item type
- *  that carries these fields, so future agents plug in for free. */
+/** One favorites row, type-aware: stays show name · ★ · price/night and tap
+ *  opens the detail modal; flights show airline · route · price (no detail
+ *  surface yet, so no tap target). The filled heart unhearts. */
 function FavoriteRow({
   favorite,
   onOpen,
   onUnheart,
 }: {
   favorite: TripFavorite;
-  onOpen: () => void;
+  /** Absent = the row has no detail surface (e.g. flights) — not clickable. */
+  onOpen?: () => void;
   onUnheart: () => void;
 }) {
   const item = favorite.item as {
     name?: string;
     stars?: number;
     pricePerNight?: number;
+    price?: number;
     currency?: string;
     id?: string;
+    airlineName?: string;
+    segments?: Array<{ origin?: string; destination?: string }>;
   };
+  const isFlight = favorite.itemType === "flight";
+  const title = isFlight
+    ? (item.airlineName ?? favorite.itemCode)
+    : (item.name ?? favorite.itemCode);
+  const amount = isFlight ? item.price : item.pricePerNight;
   const price =
-    typeof item.pricePerNight === "number"
+    typeof amount === "number"
       ? item.currency === "USD"
-        ? `$${item.pricePerNight}`
+        ? `$${amount}`
         : item.currency === "EUR"
-          ? `€${item.pricePerNight}`
-          : `${item.pricePerNight} ${item.currency ?? ""}`.trim()
+          ? `€${amount}`
+          : `${amount} ${item.currency ?? ""}`.trim()
+      : null;
+  const route =
+    isFlight && item.segments?.length
+      ? `${item.segments[0].origin ?? ""}→${item.segments[item.segments.length - 1].destination ?? ""}`
       : null;
   const mock = (item.id ?? "").startsWith("mock-");
+  const body = (
+    <>
+      <span dir="auto" className="block truncate text-sm font-semibold text-c-ink">
+        {title}
+      </span>
+      <span className="flex items-center gap-1.5 text-xs text-c-muted">
+        {route ? <span dir="ltr">{route}</span> : null}
+        {!isFlight && item.stars ? (
+          <span className="text-c-accent">{"★".repeat(item.stars)}</span>
+        ) : null}
+        {price ? <span dir="ltr" className="tabular-nums">{price}</span> : null}
+        {mock ? <span>נתוני דמה</span> : null}
+      </span>
+    </>
+  );
   return (
     <div className="group flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-c-accent-soft/60">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="min-w-0 flex-1 text-start"
-      >
-        <span dir="auto" className="block truncate text-sm font-semibold text-c-ink">
-          {item.name ?? favorite.itemCode}
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-c-muted">
-          {item.stars ? (
-            <span className="text-c-accent">{"★".repeat(item.stars)}</span>
-          ) : null}
-          {price ? <span dir="ltr" className="tabular-nums">{price}</span> : null}
-          {mock ? <span>נתוני דמה</span> : null}
-        </span>
-      </button>
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-start">
+          {body}
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1 text-start">{body}</div>
+      )}
       <HeartButton active label="הסר מהמועדפים" onToggle={onUnheart} />
     </div>
   );
@@ -315,7 +334,11 @@ export default function TripSidebar({
                     <FavoriteRow
                       key={`${f.itemType}|${f.itemCode}`}
                       favorite={f}
-                      onOpen={() => onOpenFavorite?.(f)}
+                      onOpen={
+                        f.itemType === "stay" && onOpenFavorite
+                          ? () => onOpenFavorite(f)
+                          : undefined
+                      }
                       onUnheart={() => onUnheart?.(f)}
                     />
                   ))}

@@ -258,6 +258,30 @@ export function splitMore(content: string): { key: string } | null {
   }
 }
 
+/**
+ * Strip <<MORE>> blocks from a message. The ticket IS persisted (so the
+ * "show more" button survives navigation and reloads) but the MODEL must
+ * never see it in its history — a machine key in its own prior message
+ * invites imitation. The chat route applies this at the history seam.
+ */
+export function stripMoreBlock(content: string): string {
+  return content.replace(/\n?<<\s*MORE\s*>>[\s\S]*?<<\s*END\s*>>/gi, "").trimEnd();
+}
+
+/**
+ * Every stay-offer id ever shown in this conversation (union across all
+ * STAYS blocks) — the "show more" exclusion seed, so a replacement batch can
+ * never re-serve a hotel from ANY earlier stack, not just the current one.
+ */
+export function collectShownStayIds(contents: string[]): string[] {
+  const ids = new Set<string>();
+  for (const c of contents) {
+    const { stays } = splitStays(c);
+    if (stays) for (const o of stays.offers) ids.add(o.id);
+  }
+  return [...ids];
+}
+
 export type ParsedAssistantMessage = {
   text: string;
   flights: FlightsPayload | null;

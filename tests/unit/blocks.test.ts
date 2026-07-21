@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectShownStayIds,
   displayText,
   fixSentenceSpacing,
   hasErrorMarker,
@@ -10,6 +11,7 @@ import {
   splitFlights,
   splitOptions,
   splitStays,
+  stripMoreBlock,
 } from "@/lib/chat/blocks";
 
 const FLIGHT_OFFER = {
@@ -253,5 +255,37 @@ describe("splitMore (server-authored show-more ticket)", () => {
     expect(splitMore("plain text")).toBeNull();
     expect(splitMore("X\n<<MORE>>\n{oops\n<<END>>")).toBeNull();
     expect(splitMore('X\n<<MORE>>\n{"key":""}\n<<END>>')).toBeNull();
+  });
+});
+
+describe("stripMoreBlock (model-history hygiene for persisted MORE tickets)", () => {
+  it("removes the MORE block, keeps text and the STAYS block intact", () => {
+    const msg = `${staysMsg()}\n<<MORE>>\n{"key":"{\\"destination\\":\\"Bangkok\\"}"}\n<<END>>`;
+    const stripped = stripMoreBlock(msg);
+    expect(stripped).not.toContain("MORE");
+    expect(splitStays(stripped).stays?.offers).toHaveLength(1);
+    expect(stripped).toContain("מצאתי כמה אפשרויות.");
+  });
+  it("is a no-op without a MORE block and tolerates spacing", () => {
+    expect(stripMoreBlock("plain text")).toBe("plain text");
+    expect(stripMoreBlock('X\n<< more >>\n{"key":"k"}\n<< end >>')).toBe("X");
+  });
+});
+
+describe("collectShownStayIds (session-wide show-more exclusion seed)", () => {
+  const block = (ids: string[]) =>
+    `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", offers: ids.map((id) => ({ ...STAY_OFFER, id })) })}\n<<END>>`;
+  it("unions ids across all STAYS blocks, deduped", () => {
+    const ids = collectShownStayIds([
+      "user text",
+      block(["hb-1", "hb-2"]),
+      "another user text",
+      block(["hb-2", "hb-3"]),
+    ]);
+    expect(ids.sort()).toEqual(["hb-1", "hb-2", "hb-3"]);
+  });
+  it("empty conversation → empty seed", () => {
+    expect(collectShownStayIds([])).toEqual([]);
+    expect(collectShownStayIds(["no blocks here"])).toEqual([]);
   });
 });

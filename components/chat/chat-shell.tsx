@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import ChatClient from "./chat-client";
 import TripSidebar, { type Trip } from "./trip-sidebar";
-import type { Lang, StayOfferView } from "./message-parts";
-import { providerFromOfferId, type TripFavorite } from "@/lib/favorites";
+import type { Lang } from "./message-parts";
+import {
+  providerFromOfferId,
+  type FavoriteItemType,
+  type TripFavorite,
+} from "@/lib/favorites";
 
 type Message = {
   role: "user" | "assistant";
@@ -49,41 +53,50 @@ export default function ChatShell({
     };
   }, [activeTripId]);
 
-  /** Optimistic heart toggle. tripId comes from the CHAT's live state (a
-   *  brand-new trip has an id from X-Trip-Id before the sidebar knows it). */
+  /** Optimistic heart toggle — item-type generic (stays and flights today;
+   *  future agents reuse it untouched). tripId comes from the CHAT's live
+   *  state (a brand-new trip has an id from X-Trip-Id before the sidebar
+   *  knows it). */
   async function toggleFavorite(
     tripId: string | null,
-    offer: StayOfferView,
+    itemType: FavoriteItemType,
+    item: { id: string } & Record<string, unknown>,
     lang: Lang,
   ) {
     if (!tripId) return;
-    const hearted = favorites.some((f) => f.itemCode === offer.id);
+    const hearted = favorites.some(
+      (f) => f.itemType === itemType && f.itemCode === item.id,
+    );
     const fav: TripFavorite = {
-      itemType: "stay",
-      itemProvider: providerFromOfferId(offer.id),
-      itemCode: offer.id,
-      item: { ...offer, lang },
+      itemType,
+      itemProvider: providerFromOfferId(item.id),
+      itemCode: item.id,
+      item: { ...item, lang },
       createdAt: new Date().toISOString(),
     };
     setFavorites((prev) =>
-      hearted ? prev.filter((f) => f.itemCode !== offer.id) : [fav, ...prev],
+      hearted
+        ? prev.filter((f) => !(f.itemType === itemType && f.itemCode === item.id))
+        : [fav, ...prev],
     );
     try {
       const res = hearted
         ? await fetch(
-            `/api/trips/${tripId}/favorites?type=stay&code=${encodeURIComponent(offer.id)}`,
+            `/api/trips/${tripId}/favorites?type=${itemType}&code=${encodeURIComponent(item.id)}`,
             { method: "DELETE" },
           )
         : await fetch(`/api/trips/${tripId}/favorites`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ itemType: "stay", item: { ...offer, lang } }),
+            body: JSON.stringify({ itemType, item: { ...item, lang } }),
           });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       console.error("Favorite toggle failed:", err);
       setFavorites((prev) =>
-        hearted ? [fav, ...prev] : prev.filter((f) => f.itemCode !== offer.id),
+        hearted
+          ? [fav, ...prev]
+          : prev.filter((f) => !(f.itemType === itemType && f.itemCode === item.id)),
       );
     }
   }
@@ -92,14 +105,17 @@ export default function ChatShell({
     trips,
     activeTripId,
     favorites,
+    // Stays open the detail modal; flights have no detail surface yet.
     onOpenFavorite: (f: TripFavorite) => {
+      if (f.itemType !== "stay") return;
       setFavoriteDetail(f);
       setDrawerOpen(false);
     },
     onUnheart: (f: TripFavorite) =>
       void toggleFavorite(
         activeTripId,
-        f.item as unknown as StayOfferView,
+        f.itemType,
+        f.item as { id: string } & Record<string, unknown>,
         (f.item as { lang?: string }).lang === "en" ? "en" : "he",
       ),
   };
