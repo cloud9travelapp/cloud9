@@ -311,6 +311,10 @@ export async function POST(request: Request) {
   const t0 = Date.now();
   const session = await auth();
   if (!session?.user?.googleId) {
+    // Pre-stream failures self-report too (the 2026-07-20 first-user session
+    // hit the client's error bubble with NOTHING in diag_events — every
+    // non-OK path before the stream was invisible).
+    await logDiag("chat_request_error", { stage: "auth", status: 401 });
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
@@ -318,6 +322,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
+    await logDiag("chat_request_error", { stage: "body", status: 400 });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
@@ -358,6 +363,11 @@ export async function POST(request: Request) {
 
   if (userError || !user) {
     console.error("Failed to load user:", userError?.message);
+    await logDiag("chat_request_error", {
+      stage: "user_load",
+      status: 500,
+      message: (userError?.message ?? "no user row").slice(0, 200),
+    });
     return Response.json({ error: "Could not load your profile" }, { status: 500 });
   }
 
@@ -389,6 +399,11 @@ export async function POST(request: Request) {
       admin.from("trips").select("preferences").eq("id", rawTripId).single(),
     ]);
     if (!tripRes.data) {
+      await logDiag("chat_request_error", {
+        stage: "trip_lookup",
+        status: 404,
+        trip: rawTripId,
+      });
       return Response.json({ error: "Trip not found" }, { status: 404 });
     }
     trip = tripRes.data;
@@ -406,6 +421,11 @@ export async function POST(request: Request) {
       .single();
     if (error || !data) {
       console.error("Failed to create trip:", error?.message);
+      await logDiag("chat_request_error", {
+        stage: "trip_create",
+        status: 500,
+        message: (error?.message ?? "no data").slice(0, 200),
+      });
       return Response.json({ error: "Could not start a trip" }, { status: 500 });
     }
     trip = data;
