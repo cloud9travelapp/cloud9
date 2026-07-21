@@ -44,10 +44,17 @@ export type StayOfferView = {
   totalPrice: number;
   currency: string;
 };
+/** Client-side re-sort modes for a stays card stack. "fit" = the delivered
+ *  order (server smart sort) with the recommended card floated first. */
+export type StaySortMode = "fit" | "priceAsc" | "priceDesc" | "distance";
+
 export type StaysPayload = {
   mock: boolean;
   lang: Lang;
   offers: StayOfferView[];
+  /** The concierge's named best-fit pick — badges its card and floats it to
+   *  the top of the stack. Only ever an id present in offers. */
+  recommendedId?: string;
 };
 
 export type DateMode = "single" | "range";
@@ -263,6 +270,9 @@ const LABELS: Record<
     amenity: (k: string) => string;
     distance: (key: string, minutes: number) => string;
     kmFromCenter: (km: number) => string;
+    recommended: string;
+    sortLabel: Record<StaySortMode, string>;
+    sortAria: string;
     select: string;
     selected: string; // prefix for the structured choice message
     layover: (duration: string, hub: string) => string;
@@ -293,6 +303,14 @@ const LABELS: Record<
     distance: (key, minutes) =>
       `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
     kmFromCenter: (km) => `${km} ק"מ מהמרכז`,
+    recommended: "ההמלצה שלי",
+    sortLabel: {
+      fit: "הכי מתאים לי",
+      priceAsc: "זול→יקר",
+      priceDesc: "יקר→זול",
+      distance: "קרוב למרכז",
+    },
+    sortAria: "סידור התוצאות",
     select: "בחר",
     selected: "בחרתי",
     layover: (dur, hub) => `עצירה ${dur} ב-${hub}`,
@@ -323,6 +341,14 @@ const LABELS: Record<
     distance: (key, minutes) =>
       `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
     kmFromCenter: (km) => `${km} km from center`,
+    recommended: "My pick",
+    sortLabel: {
+      fit: "Best fit",
+      priceAsc: "Price ↑",
+      priceDesc: "Price ↓",
+      distance: "Near center",
+    },
+    sortAria: "Sort results",
     select: "Select",
     selected: "Selected",
     layover: (dur, hub) => `${dur} layover in ${hub}`,
@@ -549,16 +575,53 @@ function money(amount: number, currency: string): string {
   return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
 }
 
+/** Compact sort chips above a stays card stack — client-side re-sort only
+ *  (chips for discovery; asking in chat works too and wins). */
+export function StaySortChips({
+  lang,
+  active,
+  onChange,
+}: {
+  lang: Lang;
+  active: StaySortMode;
+  onChange: (mode: StaySortMode) => void;
+}) {
+  const L = LABELS[lang];
+  const MODES: StaySortMode[] = ["fit", "priceAsc", "priceDesc", "distance"];
+  return (
+    <div dir="auto" role="group" aria-label={L.sortAria} className="flex flex-wrap gap-1.5">
+      {MODES.map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          aria-pressed={m === active}
+          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+            m === active
+              ? "border-c-accent bg-c-accent text-c-on-accent"
+              : "border-c-border bg-c-surface text-c-muted hover:border-c-accent/50 hover:text-c-ink"
+          }`}
+        >
+          {L.sortLabel[m]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function StayCard({
   offer,
   mock,
   lang,
+  recommended,
   onSelect,
   onOpenDetail,
 }: {
   offer: StayOfferView;
   mock: boolean;
   lang: Lang;
+  /** The concierge's named pick — small badge + accent border. */
+  recommended?: boolean;
   onSelect?: (choice: string) => void;
   /** Real chat only: tapping the card body opens the detail modal. */
   onOpenDetail?: () => void;
@@ -566,10 +629,19 @@ export function StayCard({
   const L = LABELS[lang];
   return (
     <div
-      className={`rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+      className={`rounded-xl border ${
+        recommended ? "border-c-accent/50" : "border-c-border"
+      } bg-c-surface px-3 py-2.5 shadow-sm${
         onOpenDetail ? " cursor-pointer select-none" : ""
       }`}
       onClick={onOpenDetail}>
+      {recommended ? (
+        <div dir="auto" className="mb-1.5">
+          <span className="rounded-full bg-c-accent px-2 py-0.5 text-[11px] font-semibold text-c-on-accent">
+            {L.recommended}
+          </span>
+        </div>
+      ) : null}
       {/* name + type (start) · price per night (end, LTR) */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
