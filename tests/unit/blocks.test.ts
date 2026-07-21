@@ -130,6 +130,21 @@ describe("splitStays", () => {
   });
 });
 
+describe("splitStays recommendedId", () => {
+  it("parses a recommendedId that names a shown offer", () => {
+    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, recommendedId: "s1", offers: [STAY_OFFER] })}\n<<END>>`;
+    expect(splitStays(msg).stays?.recommendedId).toBe("s1");
+  });
+  it("drops a recommendedId that matches no shown offer (never a wrong badge)", () => {
+    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, recommendedId: "ghost", offers: [STAY_OFFER] })}\n<<END>>`;
+    expect(splitStays(msg).stays?.recommendedId).toBeUndefined();
+  });
+  it("absent recommendedId stays undefined", () => {
+    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, offers: [STAY_OFFER] })}\n<<END>>`;
+    expect(splitStays(msg).stays?.recommendedId).toBeUndefined();
+  });
+});
+
 describe("splitDates", () => {
   it("parses he range", () => {
     const r = splitDates('מצוין. נבחר תאריכים:\n<<DATES>>\n{"lang":"he","mode":"range"}\n<<END>>');

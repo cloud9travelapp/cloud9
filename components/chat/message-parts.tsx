@@ -48,6 +48,9 @@ export type StaysPayload = {
   mock: boolean;
   lang: Lang;
   offers: StayOfferView[];
+  /** The concierge's named best-fit pick — badges its card and floats it to
+   *  the top of the stack. Only ever an id present in offers. */
+  recommendedId?: string;
 };
 
 export type DateMode = "single" | "range";

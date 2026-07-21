@@ -127,13 +127,15 @@ export function splitStays(content: string): {
     let mock = true;
     let lang: Lang = "en";
     let offersRaw: unknown;
-    if (Array.isArray(parsed)) {
-      offersRaw = parsed;
-    } else if (parsed && typeof parsed === "object") {
-      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
+    let recommendedRaw: unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown; recommendedId?: unknown };
       offersRaw = obj.offers;
       mock = obj.mock !== false; // label unless explicitly false
       lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
+      recommendedRaw = obj.recommendedId;
+    } else if (Array.isArray(parsed)) {
+      offersRaw = parsed;
     }
     if (!Array.isArray(offersRaw)) return { text, stays: null };
     const offers = offersRaw.filter((o): o is StayOfferView => {
@@ -146,7 +148,15 @@ export function splitStays(content: string): {
       );
     });
     if (!offers.length) return { text, stays: null };
-    return { text, stays: { mock, lang, offers: offers.slice(0, 8) } };
+    const shown = offers.slice(0, 8);
+    // A recommendation only counts when it names a SHOWN offer — anything
+    // else (typo, dropped offer) degrades to no badge, never a wrong badge.
+    const recommendedId =
+      typeof recommendedRaw === "string" &&
+      shown.some((o) => o.id === recommendedRaw)
+        ? recommendedRaw
+        : undefined;
+    return { text, stays: { mock, lang, offers: shown, ...(recommendedId ? { recommendedId } : {}) } };
   } catch {
     return { text, stays: null };
   }
