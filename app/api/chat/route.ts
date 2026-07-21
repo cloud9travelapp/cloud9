@@ -9,8 +9,12 @@ import { sanitizeTripTitle } from "@/lib/trip-title";
 import { logDiag } from "@/lib/diag";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
-import { searchStays, IS_MOCK_STAY_PROVIDER } from "@/lib/stays/provider";
-import type { StayQuery } from "@/lib/stays/types";
+import {
+  searchStays,
+  searchStayByName,
+  IS_MOCK_STAY_PROVIDER,
+} from "@/lib/stays/provider";
+import type { StayOffer, StayQuery } from "@/lib/stays/types";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -110,6 +114,11 @@ const STAY_TOOL: Anthropic.Tool = {
         enum: ["near", "any"],
         description:
           '"near" (default) prefers offers close to the searched point. Pass "any" ONLY when the user explicitly wants outskirts or says distance does not matter.',
+      },
+      hotelName: {
+        type: "string",
+        description:
+          'Pass ONLY when the user asked for a SPECIFIC property by name ("I want the Six Senses hotel"). The property name alone, without the city. The search becomes a lookup of that hotel.',
       },
     },
     required: ["destination", "checkIn", "checkOut"],
@@ -278,6 +287,10 @@ async function runStaySearch(input: unknown): Promise<string> {
       latitude: typeof q.latitude === "number" ? q.latitude : undefined,
       longitude: typeof q.longitude === "number" ? q.longitude : undefined,
       distanceFilter: q.distanceFilter === "any" ? "any" : undefined,
+      hotelName:
+        typeof q.hotelName === "string" && q.hotelName.trim()
+          ? q.hotelName.trim().slice(0, 120)
+          : undefined,
     };
     if (
       !query.destination ||
@@ -285,6 +298,24 @@ async function runStaySearch(input: unknown): Promise<string> {
       !/^\d{4}-\d{2}-\d{2}$/.test(query.checkOut)
     ) {
       return "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.";
+    }
+    // A named property flips the search into an honest LOOKUP of that hotel.
+    if (query.hotelName) {
+      const r = await withTimeout(searchStayByName(query), 15000);
+      const offers: StayOffer[] =
+        r.status === "available" && r.offer ? [r.offer] : r.alternatives;
+      const mock =
+        IS_MOCK_STAY_PROVIDER ||
+        (offers.length > 0 && offers.every((o) => o.id.startsWith("mock-")));
+      return JSON.stringify({
+        mock,
+        namedHotel: {
+          requested: query.hotelName,
+          status: r.status,
+          ...(r.matchedName ? { matchedName: r.matchedName } : {}),
+        },
+        offers,
+      });
     }
     const results = await withTimeout(searchStays(query), 15000);
     // A worth-it deal rides the array marked with .deal — split it out so the
@@ -589,6 +620,12 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
 - Budget level: ALWAYS ask it BEFORE your first search_stays for a destination — even when they gave you the destination and dates in one message — skipping the question ONLY if they already stated their level. Ask with the quick-reply options block, three choices in this turn's reply language, mapping to the tool's budgetLevel: "On a budget" → budget, "Mid-range" → mid, "Treat yourself" → luxury. (Hebrew: "חסכוני" / "טווח ביניים" / "לפנק את עצמי".) Never pick a budget level for them.
 - Location within the city: you are a travel agent, not a price list. For a city with distinct areas, if they haven't indicated where they want to stay, ask ONE question (its own turn, after budget) with real area options plus a word of character — e.g. "Duomo — הכי מרכזי" / "Navigli — תעלות וחיי לילה" / "גמיש". Only offer areas you're genuinely confident about; for places you don't know well, ask openly instead of inventing areas.
 - When presenting results, ADVISE — inside the tight format below: the ONE best-fit sentence is where the advice lives. Pick by FIT ("הכי כדאי"), never by price alone — weigh price + location + quality (stars for now; guest scores once available) + everything you've learned about THIS traveler (including regret-flow preferences) — and name the single decisive trade-off, grounded in the offer's "distanceKm" copied exactly ("הכי כדאי בשבילך: X — 1.2 ק"מ מהמרכז, קצת יקר יותר"). Crowning the cheapest without a fit reason is a bug; so is expanding into a per-hotel rundown — the cards do the comparing.
+- A SPECIFIC hotel by name ("אני רוצה את מלון Six Senses", "book me the Ritz"): once you have the dates, call search_stays with hotelName = the property name alone (skip the budget and area questions — naming the property IS the answer to both; still confirm dates as usual). The result carries "namedHotel" with a status — handle each honestly:
+  - "available": the hotel is in "offers" — present it as the single card with one short line. If "matchedName" differs meaningfully from what they asked, say which property you found.
+  - "unavailable": say plainly that you found it but it has no availability for those dates in your inventory, then present the alternatives cards (the opening line carries the unavailability; remember cards end the message).
+  - "not_in_inventory": say plainly that you couldn't find that property in your currently-available inventory — NEVER pretend it doesn't exist, and NEVER invent an offer for it — then present the closest alternatives.
+  - "lookup_failed": you couldn't check right now (technical) — say so, offer to try again, and present the alternatives if any. This status says NOTHING about the hotel itself.
+  A named hotel NEVER appears as a card or with a price unless it came back in the tool result — inventing or approximating a named property is the worst possible bug.
 - Inventory honesty: when the results don't include something they asked for by tier or name (a 5-star palace, a specific hotel or chain), the gap is in YOUR currently-available inventory — say exactly that ("במלאי שזמין לי כרגע לא מצאתי 5 כוכבים באזור הזה" / "I don't have a 5-star option in my current inventory for those dates") and offer the closest real alternatives you do have. NEVER state or imply the destination itself lacks it — Paris has palaces even when your inventory tops out at 4 stars.
 - Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
 - Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
