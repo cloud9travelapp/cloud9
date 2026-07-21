@@ -30,7 +30,23 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  /** Local-only: a connection-error bubble (never persisted) — renders with a
+   *  retry affordance while it's the latest message. */
+  error?: boolean;
 };
+
+// Connection-error bubble + retry label, localized by the FAILED message's
+// language (the deterministic reply-language policy lives server-side; a
+// request that never completed only has the user's own text to go by).
+const ERROR_TEXT = {
+  he: "השמיים קצת מעוננים כרגע — לא הצלחתי להתחבר. נסו שוב בעוד רגע.",
+  en: "The sky's a little cloudy right now — I couldn't reach you. Try again in a moment.",
+};
+const RETRY_LABEL = { he: "לנסות שוב", en: "Try again" };
+
+function langOf(text: string): Lang {
+  return /[֐-׿]/.test(text) ? "he" : "en";
+}
 
 function formatTime(iso?: string): string {
   const d = iso ? new Date(iso) : new Date();
@@ -167,8 +183,8 @@ export default function ChatClient({
         const last = next[next.length - 1];
         next[next.length - 1] = {
           ...last,
-          content:
-            "The sky's a little cloudy right now — I couldn't reach you. Try again in a moment.",
+          content: ERROR_TEXT[langOf(text)],
+          error: true,
         };
         return next;
       });
@@ -185,6 +201,15 @@ export default function ChatClient({
       // route) — one delayed refresh picks it up without user action.
       setTimeout(() => router.refresh(), 2500);
     }
+  }
+
+  /** Retry after a connection-error bubble: drop the failed user+error pair
+   *  and resend the same text (send re-adds both). */
+  function retry() {
+    const failed = messages[messages.length - 2];
+    if (isStreaming || failed?.role !== "user") return;
+    setMessages((prev) => prev.slice(0, -2));
+    void send(failed.content);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -320,6 +345,12 @@ export default function ChatClient({
                         {formatTime(m.created_at)}
                       </span>
                     </>
+                  ) : null}
+                  {m.error && isLast && !isStreaming ? (
+                    <QuickReplyPills
+                      options={[RETRY_LABEL[langOf(m.content)]]}
+                      onSelect={() => retry()}
+                    />
                   ) : null}
                   {options && isLast && !isStreaming ? (
                     <QuickReplyPills
