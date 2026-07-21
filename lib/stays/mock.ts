@@ -1,4 +1,4 @@
-import type { StayOffer, StayQuery, StayType } from "./types";
+import type { StayByNameResult, StayOffer, StayQuery, StayType } from "./types";
 
 // Deterministic-but-varied fake data: the same query always yields the same
 // offers, while different queries look meaningfully different. Mirrors the
@@ -146,4 +146,33 @@ export async function mockSearchStays(query: StayQuery): Promise<StayOffer[]> {
 
   offers.sort((a, b) => a.pricePerNight - b.pricePerNight); // cheapest first
   return offers;
+}
+
+/**
+ * Mock hotel-by-name lookup, mirroring the real provider's honesty statuses
+ * deterministically so every path is demoable and testable without keys:
+ * a requested name containing "closed" → unavailable, "nowhere" →
+ * not_in_inventory; anything else → available (first mock offer renamed to
+ * the requested property).
+ */
+export async function mockFindStayByName(
+  query: StayQuery,
+): Promise<StayByNameResult> {
+  const name = (query.hotelName ?? "").trim();
+  const offers = await mockSearchStays(query);
+  const alternatives = offers.slice(0, 8);
+  const probe = name.toLowerCase();
+  if (probe.includes("closed")) {
+    return { status: "unavailable", matchedName: name, alternatives };
+  }
+  if (probe.includes("nowhere")) {
+    return { status: "not_in_inventory", alternatives };
+  }
+  const base = offers[0];
+  return {
+    status: "available",
+    matchedName: name,
+    offer: { ...base, name, type: "hotel" },
+    alternatives: [],
+  };
 }

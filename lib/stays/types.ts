@@ -17,6 +17,30 @@ export type StayQuery = {
   latitude?: number; // destination city center (real providers search by geo)
   longitude?: number;
   distanceFilter?: "near" | "any"; // default "near": prefer close-to-center offers
+  /** Set when the traveler asked for a SPECIFIC property by name — the search
+   *  becomes a lookup of that hotel (searchStayByName path). */
+  hotelName?: string;
+};
+
+// ── Hotel-by-name lookup (searchStayByName) ──────────────────────────────
+// Honesty is the contract: "available" is the only status that carries the
+// named hotel as an offer; every other status says exactly what we know.
+
+export type StayByNameStatus =
+  | "available" // found in inventory AND has rates for the dates → offer
+  | "unavailable" // found in inventory, no rates for these dates
+  | "not_in_inventory" // no name match in the destination's inventory index
+  | "lookup_failed"; // couldn't check (quota/technical) — NOT a claim about the hotel
+
+export type StayByNameResult = {
+  status: StayByNameStatus;
+  /** Canonical inventory name of the best match (when one exists). */
+  matchedName?: string;
+  /** The named hotel's offer — only when status is "available". */
+  offer?: StayOffer;
+  /** Closest alternatives from the regular search, for the non-available
+   *  statuses (may be empty). Never contains a .deal offer. */
+  alternatives: StayOffer[];
 };
 
 export type StayOffer = {

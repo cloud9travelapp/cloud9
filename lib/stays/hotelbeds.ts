@@ -3,12 +3,18 @@ import type {
   BudgetLevel,
   Room,
   RoomRate,
+  StayByNameResult,
   StayOffer,
   StayQuery,
   StayType,
 } from "./types";
 import { mockSearchStays } from "./mock";
 import { HOTELBEDS_BASE_URL, hotelbedsHeaders } from "./hotelbeds-auth";
+import {
+  getDestinationCode,
+  getHotelNameIndex,
+  matchHotelName,
+} from "./hotelbeds-content";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logDiag } from "@/lib/diag";
 
@@ -357,46 +363,40 @@ async function cachePut(key: string, offers: StayOffer[]): Promise<void> {
 }
 
 /** Live calls today ≈ SEARCH cache rows written since UTC midnight (each live
- *  call writes exactly one "hb1|" row; a TTL refresh re-dates its row, still
- *  counted). Scoped by key prefix — per-hotel "hbrooms|" rows and diag rows
- *  must NOT inflate the count. */
+ *  call writes exactly one "hb1|" geo row or "hbh|" by-codes row; a TTL
+ *  refresh re-dates its row, still counted). Scoped by key prefix — per-hotel
+ *  "hbrooms|" rows and diag rows must NOT inflate the count. */
 async function liveCallsToday(): Promise<number> {
   try {
     const midnight = new Date();
     midnight.setUTCHours(0, 0, 0, 0);
-    const { count, error } = await getSupabaseAdmin()
-      .from("stay_search_cache")
-      .select("key", { count: "exact", head: true })
-      .like("key", "hb1|%")
-      .gte("created_at", midnight.toISOString());
-    return error ? 0 : (count ?? 0);
+    const counts = await Promise.all(
+      ["hb1|%", "hbh|%"].map(async (prefix) => {
+        const { count, error } = await getSupabaseAdmin()
+          .from("stay_search_cache")
+          .select("key", { count: "exact", head: true })
+          .like("key", prefix)
+          .gte("created_at", midnight.toISOString());
+        return error ? 0 : (count ?? 0);
+      }),
+    );
+    return counts.reduce((a, b) => a + b, 0);
   } catch {
     return 0;
   }
 }
 
-export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[]> {
-  const headers = hotelbedsHeaders(); // throws when keys are missing
-  if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
-    throw new Error(
-      "Hotelbeds search needs the destination's latitude and longitude.",
-    );
-  }
-
-  const key = cacheKey(query);
-  const cached = await cacheGet(key);
-  if (cached) {
-    return finalizeOffers(cached, query);
-  }
-
-  if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
-    await logDiag("stays_quota_fallback", { destination: query.destination });
-    return mockSearchStays(query);
-  }
-
+/** One availability POST (search space provided by the caller: geolocation OR
+ *  explicit hotel codes), mapped + cached + rooms captured. Throws on HTTP
+ *  errors; the quota guard runs BEFORE this. */
+async function fetchAvailability(
+  searchSpace: Record<string, unknown>,
+  cacheKeyStr: string,
+  query: StayQuery,
+): Promise<StayOffer[]> {
   const res = await fetch(`${HOTELBEDS_BASE_URL}/hotel-api/1.0/hotels`, {
     method: "POST",
-    headers,
+    headers: hotelbedsHeaders(),
     body: JSON.stringify({
       stay: { checkIn: query.checkIn, checkOut: query.checkOut },
       occupancies: [
@@ -406,13 +406,7 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
           children: 0,
         },
       ],
-      geolocation: {
-        latitude: query.latitude,
-        longitude: query.longitude,
-        radius: SEARCH_RADIUS_KM,
-        unit: "km",
-      },
-      filter: { maxHotels: MAX_HOTELS },
+      ...searchSpace,
     }),
     cache: "no-store",
   });
@@ -427,11 +421,145 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   // (checked in the detail-layer round). First-party reviews are primary.
   const rawHotels = data.hotels?.hotels ?? [];
   const offers = mapHotels(rawHotels, query);
-  await cachePut(key, offers);
+  await cachePut(cacheKeyStr, offers);
   // Option A (approved): rooms ride the search response we already paid for —
   // captured per hotel, zero extra API calls; booking re-verifies fresh.
   await captureRooms(rawHotels, query);
-  return finalizeOffers(offers, query);
+  return offers;
+}
+
+/** The full mapped geo result set (cache-first, quota-guarded; mock fallback
+ *  when the daily budget is spent). Shared by the regular search and the
+ *  hotel-by-name path. */
+async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
+  hotelbedsHeaders(); // throws early when keys are missing
+  if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
+    throw new Error(
+      "Hotelbeds search needs the destination's latitude and longitude.",
+    );
+  }
+
+  const key = cacheKey(query);
+  const cached = await cacheGet(key);
+  if (cached) return cached;
+
+  if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
+    await logDiag("stays_quota_fallback", { destination: query.destination });
+    return mockSearchStays(query);
+  }
+
+  return fetchAvailability(
+    {
+      geolocation: {
+        latitude: query.latitude,
+        longitude: query.longitude,
+        radius: SEARCH_RADIUS_KM,
+        unit: "km",
+      },
+      filter: { maxHotels: MAX_HOTELS },
+    },
+    key,
+    query,
+  );
+}
+
+export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[]> {
+  return finalizeOffers(await fetchGeoOffers(query), query);
+}
+
+/**
+ * Hotel-by-name lookup: (1) free path — fuzzy-match against the (usually
+ * cached) geo search result; (2) inventory path — resolve the destination's
+ * permanently-cached name index, then one availability call restricted to the
+ * matched codes. Honesty statuses per StayByNameResult; alternatives ride the
+ * regular geo results. Worst case two quota-counted calls, both cached 24h.
+ */
+export async function hotelbedsFindStayByName(
+  query: StayQuery,
+): Promise<StayByNameResult> {
+  const name = (query.hotelName ?? "").trim();
+  if (!name) throw new Error("hotelName is required for a by-name lookup.");
+
+  const finish = async (r: StayByNameResult): Promise<StayByNameResult> => {
+    await logDiag("hotel_name_search", {
+      name,
+      status: r.status,
+      matched: r.matchedName ?? null,
+      destination: query.destination,
+    });
+    return r;
+  };
+
+  // The regular geo results double as the alternatives for every non-available
+  // status — and, when the named hotel is close to the searched point, often
+  // already contain it (zero extra calls).
+  const geoOffers = await fetchGeoOffers(query);
+  const geoMock = geoOffers.length > 0 && geoOffers.every((o) => o.id.startsWith("mock-"));
+  const alternatives = () =>
+    finalizeOffers(geoOffers, query).filter((o) => !o.deal).slice(0, 8);
+
+  if (!geoMock) {
+    const inGeo = matchHotelName(
+      name,
+      geoOffers.map((o) => ({ code: Number(o.id.slice(3)), name: o.name })),
+    );
+    if (inGeo.length > 0) {
+      const offer = geoOffers.find((o) => o.id === `hb-${inGeo[0].code}`);
+      if (offer) {
+        return finish({ status: "available", matchedName: offer.name, offer, alternatives: [] });
+      }
+    }
+  }
+
+  // Inventory index path.
+  const destCode = await getDestinationCode(query.destination);
+  const index = destCode ? await getHotelNameIndex(destCode) : null;
+  if (!index) {
+    // Couldn't resolve the inventory — never claim the hotel isn't in it.
+    return finish({ status: "lookup_failed", alternatives: alternatives() });
+  }
+  const matches = matchHotelName(name, index);
+  if (matches.length === 0) {
+    return finish({ status: "not_in_inventory", alternatives: alternatives() });
+  }
+
+  if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
+    await logDiag("stays_quota_fallback", {
+      destination: query.destination,
+      path: "by_name",
+    });
+    return finish({
+      status: "lookup_failed",
+      matchedName: matches[0].name,
+      alternatives: alternatives(),
+    });
+  }
+
+  const codes = matches.map((m) => m.code);
+  const key = [
+    "hbh",
+    codes.join("-"),
+    query.checkIn,
+    query.checkOut,
+    query.guests ?? 2,
+    query.rooms ?? 1,
+  ].join("|");
+  const offers =
+    (await cacheGet(key)) ??
+    (await fetchAvailability({ hotels: { hotel: codes } }, key, query));
+
+  // Prefer the best-scored match that actually returned rates.
+  for (const m of matches) {
+    const offer = offers.find((o) => o.id === `hb-${m.code}`);
+    if (offer) {
+      return finish({ status: "available", matchedName: m.name, offer, alternatives: [] });
+    }
+  }
+  return finish({
+    status: "unavailable",
+    matchedName: matches[0].name,
+    alternatives: alternatives(),
+  });
 }
 
 const DEAL_MIN_DISCOUNT = 0.3; // v1 starting constant (approved)

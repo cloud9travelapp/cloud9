@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mockSearchFlights } from "@/lib/flights/mock";
-import { mockSearchStays } from "@/lib/stays/mock";
+import { mockFindStayByName, mockSearchStays } from "@/lib/stays/mock";
 import {
   detectDeal,
   filterForBudget,
@@ -252,5 +252,33 @@ describe("hotelbeds mapping", () => {
     // tiny sets and no-budget pass through untouched
     expect(filterForBudget(offers.slice(0, 3), "budget")).toHaveLength(3);
     expect(filterForBudget(offers, undefined)).toHaveLength(12);
+  });
+});
+
+describe("mockFindStayByName (hotel-by-name honesty paths)", () => {
+  const q = {
+    destination: "Paris",
+    checkIn: "2026-09-10",
+    checkOut: "2026-09-14",
+    hotelName: "Six Senses",
+  };
+  it("available: returns the named property as the offer, no alternatives", async () => {
+    const r = await mockFindStayByName(q);
+    expect(r.status).toBe("available");
+    expect(r.offer?.name).toBe("Six Senses");
+    expect(r.offer?.id.startsWith("mock-")).toBe(true);
+    expect(r.alternatives).toEqual([]);
+  });
+  it("unavailable: found but no rates — alternatives offered, no named offer", async () => {
+    const r = await mockFindStayByName({ ...q, hotelName: "Closed Palace" });
+    expect(r.status).toBe("unavailable");
+    expect(r.offer).toBeUndefined();
+    expect(r.alternatives.length).toBeGreaterThan(0);
+  });
+  it("not_in_inventory: honest miss with alternatives", async () => {
+    const r = await mockFindStayByName({ ...q, hotelName: "Nowhere Inn" });
+    expect(r.status).toBe("not_in_inventory");
+    expect(r.offer).toBeUndefined();
+    expect(r.alternatives.length).toBeGreaterThan(0);
   });
 });

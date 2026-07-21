@@ -1,6 +1,6 @@
-import type { StayOffer, StayQuery } from "./types";
-import { mockSearchStays } from "./mock";
-import { hotelbedsSearchStays } from "./hotelbeds";
+import type { StayByNameResult, StayOffer, StayQuery } from "./types";
+import { mockFindStayByName, mockSearchStays } from "./mock";
+import { hotelbedsFindStayByName, hotelbedsSearchStays } from "./hotelbeds";
 
 const STAY_PROVIDER = process.env.STAY_PROVIDER || "mock";
 
@@ -25,5 +25,23 @@ export async function searchStays(query: StayQuery): Promise<StayOffer[]> {
     case "mock":
     default:
       return mockSearchStays(query);
+  }
+}
+
+/**
+ * Provider-agnostic lookup of a SPECIFIC property the traveler named
+ * (query.hotelName). NEW function per the detail-layer ground rules —
+ * searchStays is untouched. Statuses per StayByNameResult; honesty is the
+ * contract (never fake a named hotel).
+ */
+export async function searchStayByName(
+  query: StayQuery,
+): Promise<StayByNameResult> {
+  switch (STAY_PROVIDER) {
+    case "hotelbeds":
+      return hotelbedsFindStayByName(query);
+    case "mock":
+    default:
+      return mockFindStayByName(query);
   }
 }
