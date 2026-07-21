@@ -24,6 +24,7 @@ import {
   parseAssistantMessage,
   sortStayOffers,
 } from "@/lib/chat/blocks";
+import { isFavorite, type TripFavorite } from "@/lib/favorites";
 import HeroDithering from "@/components/landing/hero-dithering";
 
 // Starter prompts shown on the empty state (interface language: English).
@@ -107,10 +108,14 @@ export function StreamedText({ text }: { text: string }) {
  */
 function StayStack({
   stays,
+  isHearted,
+  onToggleHeart,
   onSelect,
   onOpenDetail,
 }: {
   stays: StaysPayload;
+  isHearted: (offerId: string) => boolean;
+  onToggleHeart: (offer: StayOfferView) => void;
   onSelect: (choice: string) => void;
   onOpenDetail: (offer: StayOfferView) => void;
 }) {
@@ -128,6 +133,8 @@ function StayStack({
           mock={stays.mock}
           lang={stays.lang}
           recommended={offer.id === stays.recommendedId}
+          hearted={isHearted(offer.id)}
+          onToggleHeart={() => onToggleHeart(offer)}
           onSelect={onSelect}
           onOpenDetail={() => onOpenDetail(offer)}
         />
@@ -141,11 +148,24 @@ export default function ChatClient({
   firstName,
   tripId,
   onMenuClick,
+  favorites,
+  onToggleFavorite,
+  openFavoriteDetail,
+  onFavoriteDetailShown,
 }: {
   initialMessages: Message[];
   firstName: string;
   tripId: string | null;
   onMenuClick?: () => void;
+  favorites: TripFavorite[];
+  onToggleFavorite: (
+    tripId: string | null,
+    offer: StayOfferView,
+    lang: Lang,
+  ) => void;
+  /** A favorite tapped in the sidebar drawer — open its detail modal. */
+  openFavoriteDetail: TripFavorite | null;
+  onFavoriteDetailShown: () => void;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -153,11 +173,22 @@ export default function ChatClient({
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [detailFor, setDetailFor] = useState<{
-    id: string;
-    name: string;
+    offer: StayOfferView;
     lang: Lang;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openFavoriteDetail) return;
+    setDetailFor({
+      offer: openFavoriteDetail.item as unknown as StayOfferView,
+      lang:
+        (openFavoriteDetail.item as { lang?: string }).lang === "en"
+          ? "en"
+          : "he",
+    });
+    onFavoriteDetailShown();
+  }, [openFavoriteDetail, onFavoriteDetailShown]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -297,9 +328,13 @@ export default function ChatClient({
     <div className="flex h-full flex-col">
       {detailFor ? (
         <StayDetailModal
-          hotelId={detailFor.id}
-          hotelName={detailFor.name}
+          hotelId={detailFor.offer.id}
+          hotelName={detailFor.offer.name}
           lang={detailFor.lang}
+          hearted={isFavorite(favorites, detailFor.offer.id)}
+          onToggleHeart={() =>
+            onToggleFavorite(currentTripId, detailFor.offer, detailFor.lang)
+          }
           onClose={() => setDetailFor(null)}
           onSelectRoom={(choice) => {
             setDetailFor(null);
@@ -452,13 +487,13 @@ export default function ChatClient({
                   {stays && isLast && !isStreaming ? (
                     <StayStack
                       stays={stays}
+                      isHearted={(id) => isFavorite(favorites, id)}
+                      onToggleHeart={(offer) =>
+                        onToggleFavorite(currentTripId, offer, stays.lang)
+                      }
                       onSelect={(s) => void send(s)}
                       onOpenDetail={(offer) =>
-                        setDetailFor({
-                          id: offer.id,
-                          name: offer.name,
-                          lang: stays.lang,
-                        })
+                        setDetailFor({ offer, lang: stays.lang })
                       }
                     />
                   ) : null}

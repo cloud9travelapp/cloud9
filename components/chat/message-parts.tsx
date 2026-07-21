@@ -270,6 +270,8 @@ const LABELS: Record<
     amenity: (k: string) => string;
     distance: (key: string, minutes: number) => string;
     kmFromCenter: (km: number) => string;
+    heart: string;
+    unheart: string;
     recommended: string;
     sortLabel: Record<StaySortMode, string>;
     sortAria: string;
@@ -303,6 +305,8 @@ const LABELS: Record<
     distance: (key, minutes) =>
       `${minutes} דק׳ הליכה ${DISTANCE_LANDMARKS.he[key] ?? ""}`.trim(),
     kmFromCenter: (km) => `${km} ק"מ מהמרכז`,
+    heart: "שמור למועדפים",
+    unheart: "הסר מהמועדפים",
     recommended: "ההמלצה שלי",
     sortLabel: {
       fit: "הכי מתאים לי",
@@ -341,6 +345,8 @@ const LABELS: Record<
     distance: (key, minutes) =>
       `${minutes} min walk to the ${DISTANCE_LANDMARKS.en[key] ?? "center"}`,
     kmFromCenter: (km) => `${km} km from center`,
+    heart: "Save to favorites",
+    unheart: "Remove from favorites",
     recommended: "My pick",
     sortLabel: {
       fit: "Best fit",
@@ -575,6 +581,51 @@ function money(amount: number, currency: string): string {
   return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
 }
 
+/** The heart: hearts an item into the trip's favorites (generic — stays
+ *  today, every future card type reuses it). Toggling never opens the card's
+ *  detail surface (stopPropagation). */
+export function HeartButton({
+  active,
+  onToggle,
+  label,
+  className = "",
+}: {
+  active: boolean;
+  onToggle: () => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors motion-safe:active:scale-90 hover:bg-c-accent-soft ${
+        active ? "text-c-accent" : "text-c-muted"
+      } ${className}`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill={active ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+      </svg>
+    </button>
+  );
+}
+
 /** Compact sort chips above a stays card stack — client-side re-sort only
  *  (chips for discovery; asking in chat works too and wins). */
 export function StaySortChips({
@@ -614,6 +665,8 @@ export function StayCard({
   mock,
   lang,
   recommended,
+  hearted,
+  onToggleHeart,
   onSelect,
   onOpenDetail,
 }: {
@@ -622,6 +675,9 @@ export function StayCard({
   lang: Lang;
   /** The concierge's named pick — small badge + accent border. */
   recommended?: boolean;
+  /** Real chat only: heart state + toggle (absent in the landing demo). */
+  hearted?: boolean;
+  onToggleHeart?: () => void;
   onSelect?: (choice: string) => void;
   /** Real chat only: tapping the card body opens the detail modal. */
   onOpenDetail?: () => void;
@@ -652,7 +708,15 @@ export function StayCard({
             {L.stayType(offer.type)} · {offer.area}
           </div>
         </div>
-        <div className="flex-none text-end">
+        <div className="flex flex-none flex-col items-end">
+          {onToggleHeart ? (
+            <HeartButton
+              active={!!hearted}
+              onToggle={onToggleHeart}
+              label={hearted ? L.unheart : L.heart}
+              className="-me-1.5 -mt-1"
+            />
+          ) : null}
           <div dir="ltr" className="text-lg font-bold text-c-accent tabular-nums">
             {money(offer.pricePerNight, offer.currency)}
           </div>

@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Room, RoomRate, StayDetail } from "@/lib/stays/types";
-import { amenityLabel, LoadingDots, type Lang } from "./message-parts";
+import { amenityLabel, HeartButton, LoadingDots, type Lang } from "./message-parts";
 import { dmy } from "@/lib/chat/dates";
 
 
@@ -21,6 +21,8 @@ const T = {
     noRooms: "מחירי חדרים לא זמינים כרגע — חפשו שוב כדי לרענן.",
     error: "הפרטים לא זמינים כרגע. אפשר לנסות שוב מאוחר יותר.",
     close: "סגירה",
+    heart: "שמור למועדפים",
+    unheart: "הסר מהמועדפים",
     mock: "נתוני דמה",
     reviews: (n: number) => `${n} ביקורות`,
     board: {
@@ -45,6 +47,8 @@ const T = {
     noRooms: "Room prices aren't available right now — search again to refresh.",
     error: "Details are unavailable right now. Try again later.",
     close: "Close",
+    heart: "Save to favorites",
+    unheart: "Remove from favorites",
     mock: "Test data",
     reviews: (n: number) => `${n} reviews`,
     board: {
@@ -183,12 +187,17 @@ export function StayDetailModal({
   hotelId,
   hotelName,
   lang,
+  hearted,
+  onToggleHeart,
   onClose,
   onSelectRoom,
 }: {
   hotelId: string;
   hotelName: string;
   lang: Lang;
+  /** Heart state + toggle — same collection as the card hearts. */
+  hearted?: boolean;
+  onToggleHeart?: () => void;
   onClose: () => void;
   onSelectRoom: (choice: string) => void;
 }) {
@@ -272,7 +281,16 @@ export function StayDetailModal({
               </p>
             ) : null}
           </div>
-          <CloudCloseButton label={L.close} onClose={onClose} />
+          <div className="flex flex-none items-center gap-1">
+            {onToggleHeart ? (
+              <HeartButton
+                active={!!hearted}
+                onToggle={onToggleHeart}
+                label={hearted ? T[lang].unheart : T[lang].heart}
+              />
+            ) : null}
+            <CloudCloseButton label={L.close} onClose={onClose} />
+          </div>
         </div>
 
         <div className="px-5 py-4">
