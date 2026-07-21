@@ -6,6 +6,7 @@ import {
   parseAssistantMessage,
   sortStayOffers,
   splitDates,
+  splitMore,
   splitFlights,
   splitOptions,
   splitStays,
@@ -238,5 +239,19 @@ describe("sortStayOffers (client-side sort chips)", () => {
     const before = offers.map((o) => o.id);
     sortStayOffers(offers, "priceDesc");
     expect(offers.map((o) => o.id)).toEqual(before);
+  });
+});
+
+describe("splitMore (server-authored show-more ticket)", () => {
+  it("parses the key and coexists with a STAYS block", () => {
+    const msg = `${staysMsg()}\n<<MORE>>\n{"key":"{\\"destination\\":\\"Hanoi\\"}"}\n<<END>>`;
+    expect(splitMore(msg)?.key).toBe('{"destination":"Hanoi"}');
+    expect(splitStays(msg).stays?.offers).toHaveLength(1);
+    expect(splitStays(msg).text).toBe("מצאתי כמה אפשרויות.");
+  });
+  it("degrades to null on absence or malformed JSON", () => {
+    expect(splitMore("plain text")).toBeNull();
+    expect(splitMore("X\n<<MORE>>\n{oops\n<<END>>")).toBeNull();
+    expect(splitMore('X\n<<MORE>>\n{"key":""}\n<<END>>')).toBeNull();
   });
 });

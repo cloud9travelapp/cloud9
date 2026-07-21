@@ -1,6 +1,10 @@
 import type { StayByNameResult, StayOffer, StayQuery } from "./types";
 import { mockFindStayByName, mockSearchStays } from "./mock";
-import { hotelbedsFindStayByName, hotelbedsSearchStays } from "./hotelbeds";
+import {
+  hotelbedsFindStayByName,
+  hotelbedsPeekStays,
+  hotelbedsSearchStays,
+} from "./hotelbeds";
 
 const STAY_PROVIDER = process.env.STAY_PROVIDER || "mock";
 
@@ -43,5 +47,22 @@ export async function searchStayByName(
     case "mock":
     default:
       return mockFindStayByName(query);
+  }
+}
+
+/**
+ * The FULL result set for a query WITHOUT any live provider call — the
+ * "show more" pool. Hotelbeds: cache-only (null once expired; the endpoint
+ * reports staleness honestly instead of burning quota). Mock: deterministic
+ * regeneration, so it is its own cache. NEW function per the ground rules —
+ * searchStays untouched.
+ */
+export async function peekStays(query: StayQuery): Promise<StayOffer[] | null> {
+  switch (STAY_PROVIDER) {
+    case "hotelbeds":
+      return hotelbedsPeekStays(query);
+    case "mock":
+    default:
+      return mockSearchStays(query);
   }
 }

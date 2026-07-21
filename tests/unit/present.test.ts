@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyMinStars, sortOffersBy } from "@/lib/stays/present";
+import { applyMinStars, nextStayBatch, sortOffersBy } from "@/lib/stays/present";
 import type { StayOffer } from "@/lib/stays/types";
 
 const mk = (
@@ -49,5 +49,37 @@ describe("applyMinStars (רק 5 כוכבים — honest filter)", () => {
     const r = applyMinStars(fourStarOnly, 5);
     expect(r.allMet).toBe(false);
     expect(r.offers).toHaveLength(2); // never silently empty
+  });
+});
+
+describe("nextStayBatch (show-more pool)", () => {
+  const pool = [
+    mk("p1", 80, 3, 1), mk("p2", 90, 4, 2), mk("p3", 100, 4, 3),
+    mk("p4", 110, 5, 4), mk("p5", 120, 3, 5), mk("p6", 130, 4, 6),
+    mk("p7", 140, 5, 7), mk("p8", 150, 4, 8), mk("p9", 160, 3, 9),
+    mk("p10", 170, 5, 10), mk("p11", 180, 4, 11), mk("p12", 190, 4, 12),
+  ];
+  it("returns the next 5 unseen, with a remaining count", () => {
+    const r = nextStayBatch(pool, { excludeIds: ["p1", "p2", "p3"] });
+    expect(r.offers.map((o) => o.id)).toEqual(["p4", "p5", "p6", "p7", "p8"]);
+    expect(r.remaining).toBe(4);
+  });
+  it("is honestly exhausted when everything was seen", () => {
+    const r = nextStayBatch(pool, { excludeIds: pool.map((o) => o.id) });
+    expect(r.offers).toEqual([]);
+    expect(r.remaining).toBe(0);
+  });
+  it("applies sortBy and minStars to the pool", () => {
+    const r = nextStayBatch(pool, { excludeIds: [], sortBy: "premium", minStars: 5 });
+    expect(r.offers.every((o) => o.stars === 5)).toBe(true);
+    expect(r.offers[0].pricePerNight).toBeGreaterThanOrEqual(
+      r.offers[r.offers.length - 1].pricePerNight,
+    );
+  });
+  it("respects the budget band (tercile) before batching", () => {
+    const r = nextStayBatch(pool, { excludeIds: [], budgetLevel: "budget" });
+    // budget band = cheapest tercile of 12 → 4 offers
+    expect(r.offers.map((o) => o.id)).toEqual(["p1", "p2", "p3", "p4"]);
+    expect(r.remaining).toBe(0);
   });
 });

@@ -272,6 +272,9 @@ const LABELS: Record<
     kmFromCenter: (km: number) => string;
     heart: string;
     unheart: string;
+    showMore: string;
+    noMore: string;
+    staleList: string;
     recommended: string;
     sortLabel: Record<StaySortMode, string>;
     sortAria: string;
@@ -307,6 +310,9 @@ const LABELS: Record<
     kmFromCenter: (km) => `${km} ק"מ מהמרכז`,
     heart: "שמור למועדפים",
     unheart: "הסר מהמועדפים",
+    showMore: "הצג עוד",
+    noMore: "אין עוד אופציות במלאי הזמין לי",
+    staleList: "הרשימה התיישנה — אפשר לבקש חיפוש מעודכן בצ'אט",
     recommended: "ההמלצה שלי",
     sortLabel: {
       fit: "הכי מתאים לי",
@@ -347,6 +353,9 @@ const LABELS: Record<
     kmFromCenter: (km) => `${km} km from center`,
     heart: "Save to favorites",
     unheart: "Remove from favorites",
+    showMore: "Show more",
+    noMore: "No more options in my available inventory",
+    staleList: "This list has aged out — ask for a fresh search in chat",
     recommended: "My pick",
     sortLabel: {
       fit: "Best fit",
@@ -579,6 +588,44 @@ export function FlightCard({
 
 function money(amount: number, currency: string): string {
   return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
+}
+
+/** "Show more" under a stays stack: idle button → loading → honest terminal
+ *  states (exhausted inventory / stale cache) as plain text lines. */
+export function ShowMoreButton({
+  lang,
+  state,
+  onClick,
+}: {
+  lang: Lang;
+  state: "idle" | "loading" | "exhausted" | "stale";
+  onClick: () => void;
+}) {
+  const L = LABELS[lang];
+  if (state === "exhausted") {
+    return (
+      <p dir="auto" className="self-center px-1 text-xs text-c-muted">
+        {L.noMore}
+      </p>
+    );
+  }
+  if (state === "stale") {
+    return (
+      <p dir="auto" className="self-center px-1 text-xs text-c-muted">
+        {L.staleList}
+      </p>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={state === "loading"}
+      onClick={onClick}
+      className="self-center rounded-full border border-c-border bg-c-surface px-4 py-1.5 text-xs text-c-accent transition-colors hover:bg-c-accent-soft disabled:opacity-50"
+    >
+      {L.showMore}
+    </button>
+  );
 }
 
 /** The heart: hearts an item into the trip's favorites (generic — stays

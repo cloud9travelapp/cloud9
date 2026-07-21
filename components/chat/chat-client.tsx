@@ -12,6 +12,7 @@ import {
   FlightCard,
   StayCard,
   StaySortChips,
+  ShowMoreButton,
   DateCalendar,
   type Lang,
   type StayOfferView,
@@ -23,6 +24,7 @@ import {
   hasErrorMarker,
   parseAssistantMessage,
   sortStayOffers,
+  splitMore,
 } from "@/lib/chat/blocks";
 import { isFavorite, type TripFavorite } from "@/lib/favorites";
 import HeroDithering from "@/components/landing/hero-dithering";
@@ -108,37 +110,87 @@ export function StreamedText({ text }: { text: string }) {
  */
 function StayStack({
   stays,
+  moreKey,
   isHearted,
   onToggleHeart,
   onSelect,
   onOpenDetail,
 }: {
   stays: StaysPayload;
+  /** The server's <<MORE>> ticket — renders the "show more" button. */
+  moreKey: string | null;
   isHearted: (offerId: string) => boolean;
   onToggleHeart: (offer: StayOfferView) => void;
   onSelect: (choice: string) => void;
   onOpenDetail: (offer: StayOfferView) => void;
 }) {
   const [sort, setSort] = useState<StaySortMode>("fit");
-  const sorted = sortStayOffers(stays.offers, sort, stays.recommendedId);
+  // "Show more" REPLACES the stack (screen stays light) — hearted hotels are
+  // already safe in the persisted favorites, so nothing is ever lost.
+  const [offers, setOffers] = useState(stays.offers);
+  const [mock, setMock] = useState(stays.mock);
+  const [recommendedId, setRecommendedId] = useState(stays.recommendedId);
+  const [moreState, setMoreState] = useState<
+    "idle" | "loading" | "exhausted" | "stale"
+  >("idle");
+  const seenRef = useRef<string[]>(stays.offers.map((o) => o.id));
+
+  async function showMore() {
+    if (!moreKey) return;
+    setMoreState("loading");
+    try {
+      const res = await fetch("/api/stays/more", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: moreKey, excludeIds: seenRef.current }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = (await res.json()) as {
+        offers: StayOfferView[];
+        remaining: number;
+        mock?: boolean;
+        expired?: boolean;
+      };
+      if (d.expired) return setMoreState("stale");
+      if (!d.offers.length) return setMoreState("exhausted");
+      seenRef.current = [...seenRef.current, ...d.offers.map((o) => o.id)];
+      setOffers(d.offers);
+      setMock(!!d.mock);
+      setRecommendedId(undefined); // the badge belongs to the first batch
+      setSort("fit");
+      setMoreState(d.remaining > 0 ? "idle" : "exhausted");
+    } catch (err) {
+      console.error("Show more failed:", err);
+      setMoreState("idle");
+    }
+  }
+
+  const sorted = sortStayOffers(offers, sort, recommendedId);
   return (
     <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
-      {stays.offers.length > 1 ? (
+      {offers.length > 1 ? (
         <StaySortChips lang={stays.lang} active={sort} onChange={setSort} />
       ) : null}
       {sorted.map((offer) => (
         <StayCard
           key={offer.id}
           offer={offer}
-          mock={stays.mock}
+          mock={mock}
           lang={stays.lang}
-          recommended={offer.id === stays.recommendedId}
+          recommended={offer.id === recommendedId}
           hearted={isHearted(offer.id)}
           onToggleHeart={() => onToggleHeart(offer)}
           onSelect={onSelect}
           onOpenDetail={() => onOpenDetail(offer)}
         />
       ))}
+      {moreKey ? (
+        <ShowMoreButton
+          lang={stays.lang}
+          state={moreState}
+          onClick={() => void showMore()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -487,6 +539,7 @@ export default function ChatClient({
                   {stays && isLast && !isStreaming ? (
                     <StayStack
                       stays={stays}
+                      moreKey={splitMore(m.content)?.key ?? null}
                       isHearted={(id) => isFavorite(favorites, id)}
                       onToggleHeart={(offer) =>
                         onToggleFavorite(currentTripId, offer, stays.lang)

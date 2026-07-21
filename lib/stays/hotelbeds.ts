@@ -467,6 +467,17 @@ export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[
   return finalizeOffers(await fetchGeoOffers(query), query);
 }
 
+/** The cached FULL result set for a query — cache-only, never a live call
+ *  (the "show more" pool must not burn quota). Null = expired/absent. */
+export async function hotelbedsPeekStays(
+  query: StayQuery,
+): Promise<StayOffer[] | null> {
+  if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
+    return null;
+  }
+  return cacheGet(cacheKey(query));
+}
+
 /**
  * Hotel-by-name lookup: (1) free path — fuzzy-match against the (usually
  * cached) geo search result; (2) inventory path — resolve the destination's

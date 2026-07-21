@@ -240,6 +240,24 @@ export function splitDates(content: string): {
   }
 }
 
+/**
+ * The server-authored <<MORE>> block: the chat route appends it after a
+ * stays search that hit the card cap — the "show more" ticket back into the
+ * cached result pool. Coexists WITH the STAYS block (it is not part of the
+ * one-block-per-message model contract; the model never writes it), so it is
+ * parsed separately from parseAssistantMessage.
+ */
+export function splitMore(content: string): { key: string } | null {
+  const raw = blockRaw(content, "MORE");
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as { key?: unknown };
+    return typeof parsed.key === "string" && parsed.key ? { key: parsed.key } : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ParsedAssistantMessage = {
   text: string;
   flights: FlightsPayload | null;

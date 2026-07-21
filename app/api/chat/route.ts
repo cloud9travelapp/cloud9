@@ -285,11 +285,16 @@ async function runFlightSearch(input: unknown): Promise<string> {
 }
 
 /**
- * Run a search_stays tool call and return a string tool result. On success:
- * JSON `{ mock, offers }`. On any failure/timeout: a short error sentence — the
- * stay layer never throws into the stream. Mirrors runFlightSearch.
+ * Run a search_stays tool call. Returns the string tool result (JSON
+ * `{ mock, offers }` on success; a short error sentence on failure — the stay
+ * layer never throws into the stream) plus, when the card cap was hit, a
+ * compact `moreKey` the route appends as a <<MORE>> block: the "show more"
+ * button's ticket back into the cached result set. Server-authored — the
+ * model never sees or copies it.
  */
-async function runStaySearch(input: unknown): Promise<string> {
+async function runStaySearch(
+  input: unknown,
+): Promise<{ result: string; moreKey?: string }> {
   try {
     // sortBy/minStars are ROUTE-level presentation concerns, deliberately not
     // part of StayQuery — the provider layer stays untouched.
@@ -322,7 +327,10 @@ async function runStaySearch(input: unknown): Promise<string> {
       !/^\d{4}-\d{2}-\d{2}$/.test(query.checkIn) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(query.checkOut)
     ) {
-      return "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.";
+      return {
+        result:
+          "Invalid search: need a destination and both check-in and check-out dates as YYYY-MM-DD.",
+      };
     }
     // A named property flips the search into an honest LOOKUP of that hotel.
     if (query.hotelName) {
@@ -332,15 +340,17 @@ async function runStaySearch(input: unknown): Promise<string> {
       const mock =
         IS_MOCK_STAY_PROVIDER ||
         (offers.length > 0 && offers.every((o) => o.id.startsWith("mock-")));
-      return JSON.stringify({
-        mock,
-        namedHotel: {
-          requested: query.hotelName,
-          status: r.status,
-          ...(r.matchedName ? { matchedName: r.matchedName } : {}),
-        },
-        offers,
-      });
+      return {
+        result: JSON.stringify({
+          mock,
+          namedHotel: {
+            requested: query.hotelName,
+            status: r.status,
+            ...(r.matchedName ? { matchedName: r.matchedName } : {}),
+          },
+          offers,
+        }),
+      };
     }
     const results = await withTimeout(searchStays(query), 15000);
     // A worth-it deal rides the array marked with .deal — split it out so the
@@ -368,19 +378,45 @@ async function runStaySearch(input: unknown): Promise<string> {
     const mock =
       IS_MOCK_STAY_PROVIDER ||
       (results.length > 0 && results.every((o) => o.id.startsWith("mock-")));
-    return JSON.stringify({
-      mock,
-      offers,
-      ...(deal ? { deal } : {}),
-      ...(minStarsNote ? { minStarsNote } : {}),
-    });
+    // Card cap hit → the client gets a "show more" ticket into the cached
+    // pool (the endpoint honestly reports exhaustion if 8 was everything).
+    const moreKey =
+      offers.length >= 8
+        ? JSON.stringify({
+            destination: query.destination,
+            latitude: query.latitude,
+            longitude: query.longitude,
+            checkIn: query.checkIn,
+            checkOut: query.checkOut,
+            guests: query.guests,
+            rooms: query.rooms,
+            ...(query.budgetLevel ? { budgetLevel: query.budgetLevel } : {}),
+            ...(sortBy ? { sortBy } : {}),
+            ...(q.minStars === 5 ? { minStars: 5 } : {}),
+          })
+        : undefined;
+    return {
+      result: JSON.stringify({
+        mock,
+        offers,
+        ...(deal ? { deal } : {}),
+        ...(minStarsNote ? { minStarsNote } : {}),
+      }),
+      moreKey,
+    };
   } catch (err) {
     console.error("Stay search failed:", err);
     await logDiag("stay_search_error", { message: String(err).slice(0, 300) });
     if (err instanceof Error && err.message.includes("latitude")) {
-      return "Invalid search: include the destination's latitude and longitude in the tool call and try again.";
+      return {
+        result:
+          "Invalid search: include the destination's latitude and longitude in the tool call and try again.",
+      };
     }
-    return "The hotel search is unavailable right now. Apologize briefly in this turn's reply language and offer to try again.";
+    return {
+      result:
+        "The hotel search is unavailable right now. Apologize briefly in this turn's reply language and offer to try again.",
+    };
   }
 }
 
@@ -737,6 +773,10 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Set when a stays search hit the card cap this turn — appended after
+      // the model finishes as a server-authored <<MORE>> block (the model
+      // never sees it; displayText strips it from every surface).
+      let staysMoreKey: string | null = null;
       try {
         // Tool round-trip loop. A normal reply (no tool call) streams exactly as
         // before and breaks after the first turn; a flight request adds one hop:
@@ -777,21 +817,25 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
               block.name === "search_stays" ||
               block.name === "get_hotel_details" ||
               block.name === "remember_preference";
-            const result =
-              block.name === "search_flights"
-                ? await runFlightSearch(block.input)
-                : block.name === "search_stays"
-                  ? await runStaySearch(block.input)
-                  : block.name === "get_hotel_details"
-                    ? await runHotelDetails(block.input)
-                    : block.name === "remember_preference"
-                      ? await rememberPreference(
-                          admin,
-                          user.id,
-                          trip.id,
-                          block.input,
-                        )
-                      : "Unknown tool.";
+            let result: string;
+            if (block.name === "search_flights") {
+              result = await runFlightSearch(block.input);
+            } else if (block.name === "search_stays") {
+              const r = await runStaySearch(block.input);
+              result = r.result;
+              if (r.moreKey) staysMoreKey = r.moreKey;
+            } else if (block.name === "get_hotel_details") {
+              result = await runHotelDetails(block.input);
+            } else if (block.name === "remember_preference") {
+              result = await rememberPreference(
+                admin,
+                user.id,
+                trip.id,
+                block.input,
+              );
+            } else {
+              result = "Unknown tool.";
+            }
             // Every tool call self-reports (name + outcome) to diag_events —
             // diagnosis is one SQL query, never a log-window hunt.
             const ok = result.startsWith("{") || result.startsWith("Saved");
@@ -809,6 +853,15 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             });
           }
           anthropicMessages.push({ role: "user", content: toolResults });
+        }
+        // Server-authored, NOT saved into assistantText: the button lives
+        // until reload; the model's history stays free of machine keys.
+        if (staysMoreKey) {
+          controller.enqueue(
+            encoder.encode(
+              `\n<<MORE>>\n${JSON.stringify({ key: staysMoreKey })}\n<<END>>`,
+            ),
+          );
         }
       } catch (err) {
         console.error("Chat stream error:", err);
