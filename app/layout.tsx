@@ -50,7 +50,10 @@ export const metadata: Metadata = {
 
 // Set the sky phase from the user's local time BEFORE first paint, so the
 // palette is correct on load with no flash and no layout shift.
-const PHASE_SCRIPT = `(function(){try{var h=new Date().getHours();var p=h>=5&&h<8?'sunrise':h<11?'morning':h<16?'midday':h<19?'sunset':'night';document.documentElement.dataset.phase=p;}catch(e){}})();`;
+// Keep this mapping in sync with phaseForHour() in components/theme/time-of-day.tsx.
+// Bands are fully bounded so 00:00–04:59 falls through to night (the old
+// open-ended `h<11` painted the small hours as daytime "morning").
+const PHASE_SCRIPT = `(function(){try{var h=new Date().getHours();var p=h>=5&&h<8?'sunrise':h>=8&&h<11?'morning':h>=11&&h<16?'midday':h>=16&&h<19?'sunset':'night';document.documentElement.dataset.phase=p;}catch(e){}})();`;
 
 export default function RootLayout({
   children,
