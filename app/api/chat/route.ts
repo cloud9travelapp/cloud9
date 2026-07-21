@@ -120,10 +120,36 @@ const STAY_TOOL: Anthropic.Tool = {
         description:
           'Pass ONLY when the user asked for a SPECIFIC property by name ("I want the Six Senses hotel"). The property name alone, without the city. The search becomes a lookup of that hotel.',
       },
+      sortBy: {
+        type: "string",
+        enum: ["price", "premium", "distance"],
+        description:
+          'Card order, ONLY when the user\'s own words ask for it: explicit cheap-focus or a price cap → "price"; luxury/palace phrasing → "premium"; location emphasis ("near the beach", "close to the center") → "distance". Omit when they gave no such signal.',
+      },
     },
     required: ["destination", "checkIn", "checkOut"],
   },
 };
+
+/** Route-side card order (the model copies offers verbatim, so the tool
+ *  result's order IS the card order). Never touches the provider layer. */
+function sortOffersBy(
+  offers: StayOffer[],
+  sortBy: "price" | "premium" | "distance",
+): StayOffer[] {
+  const s = [...offers];
+  if (sortBy === "price") return s.sort((a, b) => a.pricePerNight - b.pricePerNight);
+  if (sortBy === "premium") {
+    return s.sort(
+      (a, b) => b.stars - a.stars || b.pricePerNight - a.pricePerNight,
+    );
+  }
+  return s.sort(
+    (a, b) =>
+      (a.distanceKm ?? Number.POSITIVE_INFINITY) -
+      (b.distanceKm ?? Number.POSITIVE_INFINITY),
+  );
+}
 
 const HOTEL_DETAILS_TOOL: Anthropic.Tool = {
   name: "get_hotel_details",
@@ -278,7 +304,9 @@ async function runFlightSearch(input: unknown): Promise<string> {
  */
 async function runStaySearch(input: unknown): Promise<string> {
   try {
-    const q = (input ?? {}) as Partial<StayQuery>;
+    // sortBy is a ROUTE-level presentation concern, deliberately not part of
+    // StayQuery — the provider layer stays untouched.
+    const q = (input ?? {}) as Partial<StayQuery> & { sortBy?: unknown };
     const query: StayQuery = {
       destination: String(q.destination ?? "").trim(),
       checkIn: String(q.checkIn ?? ""),
@@ -328,7 +356,12 @@ async function runStaySearch(input: unknown): Promise<string> {
     // A worth-it deal rides the array marked with .deal — split it out so the
     // cards never include it silently; the model OFFERS it (teaser sentence).
     const deal = results.find((o) => o.deal);
-    const offers = results.filter((o) => !o.deal);
+    const sortBy =
+      q.sortBy === "price" || q.sortBy === "premium" || q.sortBy === "distance"
+        ? q.sortBy
+        : undefined;
+    let offers = results.filter((o) => !o.deal);
+    if (sortBy) offers = sortOffersBy(offers, sortBy);
     // A real provider can hand back mock offers (daily quota guard); their
     // "mock-" ids re-label the cards as test data so the fallback stays honest.
     const mock =
@@ -638,6 +671,7 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
   A named hotel NEVER appears as a card or with a price unless it came back in the tool result — inventing or approximating a named property is the worst possible bug.
 - Inventory honesty: when the results don't include something they asked for by tier or name (a 5-star palace, a specific hotel or chain), the gap is in YOUR currently-available inventory — say exactly that ("במלאי שזמין לי כרגע לא מצאתי 5 כוכבים באזור הזה" / "I don't have a 5-star option in my current inventory for those dates") and offer the closest real alternatives you do have. NEVER state or imply the destination itself lacks it — Paris has palaces even when your inventory tops out at 4 stars.
 - Only call search_stays once you have the destination and both check-in and check-out dates. Always include the destination's latitude and longitude in the call (you know city coordinates, like you know IATA codes) — never ask the user for them.
+- Card order (sortBy): the default order is already smart — only pass sortBy when the USER'S OWN WORDS ask for an emphasis (listening, never assuming): explicit cheap-focus or a price cap → "price"; luxury/palace phrasing → "premium"; location emphasis ("קרוב לחוף", "close to the center") → "distance". No such signal → omit it. When they ask to RE-ORDER options you already showed ("תסדר לפי מחיר", "sort by distance"), call search_stays again with the SAME parameters plus the matching sortBy — the cache makes it free — and re-present the cards in the standard results format (they can also re-sort with the buttons above the cards; a chat request still works and wins).
 - Distance targeting: results automatically prefer offers near the searched point. When the user names a specific area ("ליד הפיגאל", "walking distance from the old town"), pass THAT area's coordinates instead of the city center — the preference then measures from their area. Pass distanceFilter "any" ONLY when they explicitly want outskirts or say distance doesn't matter.
 - Worth-it deal: the tool result may carry a separate "deal" — a far-but-exceptional offer (its "deal" object has discountPct vs the shown same-star median). NEVER include it among the cards silently, and never present it as a card unprompted. In the results message you MAY add ONE short teaser sentence — e.g. "יש גם דיל שווה: 4 כוכבים 12 ק"מ מהמרכז, 35% מתחת למקבילים — מעניין?" — this is the single sanctioned exception to the no-questions-after-cards rule. If they're interested, present the deal as its own STAYS block (one card, copy the offer verbatim) and state the catch out loud: it's cheap BECAUSE it's far ("זול כי רחוק — 12 ק"מ מהמרכז"; add a transit estimate only if you're confident of it). If they decline or ignore the teaser, drop the deal entirely.
 - If you write a brief note before calling the tool, write it in this turn's reply language — never English by default. For a Hebrew user it is Hebrew (e.g. "רגע, בודק אפשרויות לינה...") — do NOT start with "Let me check accommodation...". It's also fine to call with no preamble.
