@@ -804,9 +804,12 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
           message: String(err).slice(0, 300),
           trip: trip.id,
         });
-        controller.enqueue(
-          encoder.encode("\n\n[Sorry — I ran into an error. Please try again.]"),
-        );
+        // Machine marker, not prose: the client turns it into the one
+        // branded, localized error bubble with retry. displayText strips
+        // everything from "<<", so it can never render raw — even on a
+        // stale client. (The 2026-07-21 incident surfaced raw English
+        // placeholder text here while the API was down.)
+        controller.enqueue(encoder.encode("\n<<ERROR>>"));
       } finally {
         if (assistantText.trim()) {
           const { error } = await admin.from("chat_messages").insert({

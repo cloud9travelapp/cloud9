@@ -19,7 +19,11 @@ import {
   type StaysPayload,
 } from "./message-parts";
 import { StayDetailModal } from "./stay-detail-modal";
-import { parseAssistantMessage, sortStayOffers } from "@/lib/chat/blocks";
+import {
+  hasErrorMarker,
+  parseAssistantMessage,
+  sortStayOffers,
+} from "@/lib/chat/blocks";
 import HeroDithering from "@/components/landing/hero-dithering";
 
 // Starter prompts shown on the empty state (interface language: English).
@@ -166,6 +170,10 @@ export default function ChatClient({
     const now = new Date().toISOString();
     const wasNewTrip = currentTripId === null;
     let resolvedTripId = currentTripId;
+    // Set on ANY failure (network catch or the server's in-stream <<ERROR>>
+    // marker). An errored turn never navigates away — the error bubble and
+    // its retry pill must survive (the 2026-07-21 "vanishing bubble").
+    let turnErrored = false;
     if (preset === undefined) setInput("");
     setIsStreaming(true);
     setMessages((prev) => [
@@ -206,10 +214,12 @@ export default function ChatClient({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
 
+      let received = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        received += chunk;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -217,8 +227,24 @@ export default function ChatClient({
           return next;
         });
       }
+      // The server's in-stream failure marker → the SAME branded bubble as a
+      // network failure. One error UX, both failure classes.
+      if (hasErrorMarker(received)) {
+        turnErrored = true;
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          next[next.length - 1] = {
+            ...last,
+            content: ERROR_TEXT[langOf(text)],
+            error: true,
+          };
+          return next;
+        });
+      }
     } catch (err) {
       console.error(err);
+      turnErrored = true;
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -231,16 +257,21 @@ export default function ChatClient({
       });
     } finally {
       setIsStreaming(false);
-      // Reflect the trip in the URL + sidebar. A brand-new trip navigates to its
-      // own URL; an existing one just refreshes the sidebar (name/order).
-      if (wasNewTrip && resolvedTripId) {
-        router.push(`/chat?trip=${resolvedTripId}`);
-      } else {
-        router.refresh();
+      // Reflect the trip in the URL + sidebar. A brand-new trip navigates to
+      // its own URL; an existing one just refreshes the sidebar (name/order).
+      // NEVER on an errored turn: navigation would remount from server truth
+      // and evaporate the (local-only) error bubble + retry. The trip id is
+      // already in state, so a retry continues in the created trip.
+      if (!turnErrored) {
+        if (wasNewTrip && resolvedTripId) {
+          router.push(`/chat?trip=${resolvedTripId}`);
+        } else {
+          router.refresh();
+        }
+        // The auto-title lands just AFTER the response closes (after() in the
+        // route) — one delayed refresh picks it up without user action.
+        setTimeout(() => router.refresh(), 2500);
       }
-      // The auto-title lands just AFTER the response closes (after() in the
-      // route) — one delayed refresh picks it up without user action.
-      setTimeout(() => router.refresh(), 2500);
     }
   }
 

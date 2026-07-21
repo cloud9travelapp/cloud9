@@ -65,6 +65,16 @@ export function fixSentenceSpacing(text: string): string {
   return text.replace(/([a-zא-ת])([.!?])(?=[A-ZА-Яא-ת])/g, "$1$2 ");
 }
 
+/**
+ * The in-stream server-error marker: the chat route emits `<<ERROR>>` when
+ * the stream loop fails (model API error, unexpected throw between hops).
+ * The client converts it into the branded, localized error bubble + retry —
+ * the SAME surface as a network failure, so there is exactly one error UX.
+ */
+export function hasErrorMarker(content: string): boolean {
+  return /<<\s*ERROR\s*>>/i.test(content);
+}
+
 export function displayText(content: string): string {
   const i = content.indexOf("<<");
   return fixSentenceSpacing((i === -1 ? content : content.slice(0, i)).trimEnd());

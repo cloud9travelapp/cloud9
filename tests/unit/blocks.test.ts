@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayText,
   fixSentenceSpacing,
+  hasErrorMarker,
   parseAssistantMessage,
   sortStayOffers,
   splitDates,
@@ -68,6 +69,19 @@ describe("fixSentenceSpacing (language-agnostic space-after-period guard)", () =
   });
   it("is applied by displayText", () => {
     expect(displayText("Done.Next<<OPTIONS>>")).toBe("Done. Next");
+  });
+});
+
+describe("error marker (in-stream server failure protocol)", () => {
+  it("detects the marker, tolerantly", () => {
+    expect(hasErrorMarker("רגע, בודק...\n<<ERROR>>")).toBe(true);
+    expect(hasErrorMarker("<< error >>")).toBe(true);
+    expect(hasErrorMarker("normal reply")).toBe(false);
+    expect(hasErrorMarker("<<STAYS>>")).toBe(false);
+  });
+  it("never renders raw — displayText strips it even with partial text", () => {
+    expect(displayText("רגע, בודק טיסות...\n<<ERROR>>")).toBe("רגע, בודק טיסות...");
+    expect(displayText("\n<<ERROR>>")).toBe("");
   });
 });
 
