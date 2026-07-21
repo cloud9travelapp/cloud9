@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTENT_VERSION,
   amenitiesFromFacilities,
   mapHotelContent,
   matchHotelName,
@@ -81,7 +82,7 @@ describe("mapHotelContent", () => {
     expect(content.roomImages).toEqual({}); // always present post-round (cache marker)
   });
 
-  it("groups room-tagged images by roomCode, ordered, capped at 3/room", () => {
+  it("groups room-tagged images by roomCode, ordered", () => {
     const content = mapHotelContent(
       {
         images: [
@@ -100,6 +101,7 @@ describe("mapHotelContent", () => {
         "https://photos.hotelbeds.com/giata/bigger/dbl-1.jpg",
         "https://photos.hotelbeds.com/giata/bigger/dbl-2.jpg",
         "https://photos.hotelbeds.com/giata/bigger/dbl-3.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/dbl-4.jpg",
       ],
       "SUI.KG": ["https://photos.hotelbeds.com/giata/bigger/sui-1.jpg"],
     });
@@ -167,5 +169,18 @@ describe("matchHotelName", () => {
       name: `Sunny Beach Hotel ${i}`,
     }));
     expect(matchHotelName("Sunny Beach", many)).toHaveLength(10);
+  });
+});
+
+describe("content version marker (room gallery)", () => {
+  it("stamps the current version and caps room images at 8", () => {
+    const images = Array.from({ length: 12 }, (_, i) => ({
+      path: `r${i}.jpg`,
+      visualOrder: i,
+      roomCode: "DBL.ST",
+    }));
+    const content = mapHotelContent({ images }, {});
+    expect(content.v).toBe(CONTENT_VERSION);
+    expect(content.roomImages!["DBL.ST"]).toHaveLength(8);
   });
 });

@@ -31,12 +31,19 @@ export type HotelContent = {
   reviewScore?: number; // 0-10, only when the Content API carries review data
   reviewCount?: number;
   /** Room-level images keyed by the provider room code (matches availability
-   *  room codes, e.g. "DBL.ST"). Always present since the room-photos round —
-   *  its ABSENCE marks a pre-round cache entry that needs one refetch. */
+   *  room codes, e.g. "DBL.ST"). Always present since the room-photos round. */
   roomImages?: Record<string, string[]>;
+  /** Content-shape version stamped at mapping time. A cached entry with an
+   *  older (or missing) version refetches ONCE — the generalized form of the
+   *  roomImages-presence check, so future shape changes are one bump here. */
+  v?: number;
 };
 
-const MAX_ROOM_IMAGES = 3; // per room, ordered by visualOrder
+/** Bump when HotelContent's mapped shape changes (v2: room gallery — per-room
+ *  image cap raised 3→8 for the mini-gallery). */
+export const CONTENT_VERSION = 2;
+
+const MAX_ROOM_IMAGES = 8; // per room, ordered by visualOrder (room gallery)
 const MAX_IMAGE_ROOMS = 16; // distinct room codes worth carrying
 
 const AMENITY_PATTERNS: Array<[RegExp, string]> = [
@@ -175,6 +182,7 @@ export function mapHotelContent(
     address: hotel.address?.content,
     area: hotel.zoneName ?? hotel.city?.content,
     roomImages,
+    v: CONTENT_VERSION,
     // reviewScore/reviewCount intentionally absent unless review data shows
     // up in the raw response (see the field stash below) — display-when-present.
     // Confirmed 2026-07-21 (content_api_fields diag, live opens): the TEST
@@ -363,10 +371,11 @@ export async function getHotelbedsContent(
   hotelCode: string,
 ): Promise<HotelContent | null> {
   const cached = await cacheGetContent("hotelbeds", hotelCode);
-  // Entries cached before the room-photos round lack roomImages entirely —
-  // treat those as a miss ONCE; the refetched entry always carries the field
-  // (possibly {}), so this can't loop.
-  if (cached && "roomImages" in cached) return cached as HotelContent;
+  // An entry from an older content shape (missing or lower v) is a miss ONCE;
+  // the refetched entry carries the current version, so this can't loop.
+  if (cached && (cached as HotelContent).v === CONTENT_VERSION) {
+    return cached as HotelContent;
+  }
   try {
     const res = await fetch(
       `${HOTELBEDS_BASE_URL}/hotel-content-api/1.0/hotels/${encodeURIComponent(hotelCode)}/details?language=ENG&useSecondaryLanguage=false`,
@@ -378,11 +387,18 @@ export async function getHotelbedsContent(
     const data = (await res.json()) as { hotel?: ContentApiHotel };
     if (!data.hotel) return null;
 
-    // Item-6 field stash: does the Content API carry review data? Record the
-    // top-level field list + any review-shaped nodes for one-query reading.
+    const facilityNames = await getFacilityNames().catch(() => ({}));
+    const content = mapHotelContent(data.hotel, facilityNames);
+
+    // Field stash: review-shaped nodes (the closed reviews verdict keeps
+    // auto-answering on new fetches) + room-image distribution (verifies the
+    // multiple-images-per-room assumption behind the room mini-gallery).
     const raw = data.hotel as Record<string, unknown>;
     const reviewish = Object.keys(raw).filter((k) =>
       /review|tripadv|rating/i.test(k),
+    );
+    const roomImageCounts = Object.values(content.roomImages ?? {}).map(
+      (imgs) => imgs.length,
     );
     await logDiag("content_api_fields", {
       hotelCode,
@@ -393,10 +409,9 @@ export async function getHotelbedsContent(
             Object.fromEntries(reviewish.map((k) => [k, raw[k]])),
           ).slice(0, 500)
         : null,
+      roomsWithImages: roomImageCounts.length,
+      maxImagesPerRoom: roomImageCounts.length ? Math.max(...roomImageCounts) : 0,
     });
-
-    const facilityNames = await getFacilityNames().catch(() => ({}));
-    const content = mapHotelContent(data.hotel, facilityNames);
     await cachePutContent("hotelbeds", hotelCode, content);
     return content;
   } catch (err) {
