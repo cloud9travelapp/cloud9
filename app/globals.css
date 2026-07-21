@@ -138,26 +138,13 @@ html {
   }
 }
 
-/* ── Legacy named tokens (kept until the landing page migrates in Stage 3) ── */
+/* --ink is the last legacy token: it backs the mobile drawer scrim
+   (bg-ink/30). A neutral dark scrim is phase-independent by design. */
 :root {
-  --sky-deep: #0369a1;
-  --teal: #059669;
-  --teal-ink: #047857;
-  --cloud: #f0f9ff;
-  --slate: #64748b;
   --ink: #0f172a;
-  --background: var(--cloud);
-  --foreground: var(--ink);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-sky-deep: var(--sky-deep);
-  --color-teal: var(--teal);
-  --color-teal-ink: var(--teal-ink);
-  --color-cloud: var(--cloud);
-  --color-slate-warm: var(--slate);
   --color-ink: var(--ink);
 
   /* Time-of-day role tokens exposed as Tailwind colors. */
@@ -170,6 +157,19 @@ html {
   --color-c-accent-soft: var(--c-accent-soft);
   --color-c-on-accent: var(--c-on-accent);
   --color-c-border: var(--c-border);
+
+  /* ── Cloud radius family — one deliberate vocabulary, concentric "puff"
+     nesting (panel → card → inset). A stay card (rounded-card) opening a modal
+     (rounded-panel) steps gently instead of jumping, and an element nested
+     inside a card (rounded-inset) sits ~one padding-step in, so corners stay
+     parallel. Pills/CTAs/badges stay fully round (rounded-full). */
+  --radius-inset: 0.75rem; /* 12px — nested inside a card (thumbs, insets) */
+  --radius-card: 1rem; /* 16px — every card, sidebar row, room mini-card, user bubble */
+  --radius-panel: 1.5rem; /* 24px — modal, composer bar + input, mobile drawer sheet */
+
+  /* ── Elevation — two levels only: resting surfaces and floating overlays. ── */
+  --shadow-rest: 0 6px 16px rgba(2, 8, 23, 0.08);
+  --shadow-float: 0 20px 50px rgba(2, 8, 23, 0.2);
 
   --font-sans: var(--font-heebo);
   --font-display: var(--font-suez);
