@@ -18,9 +18,20 @@ import type {
   StaysPayload,
 } from "@/components/chat/message-parts";
 
+/**
+ * Deterministic guard for the "space after sentence punctuation" writing rule
+ * (a live-session regression showed it slipping in English: "ceiling.Only").
+ * Conservative on purpose: fixes only letter+punctuation immediately followed
+ * by an uppercase Latin or any Hebrew letter — decimals ("4.5"), domains
+ * ("cloud9app.io"), acronyms ("U.S.A.") and ellipses stay untouched.
+ */
+export function fixSentenceSpacing(text: string): string {
+  return text.replace(/([a-zא-ת])([.!?])(?=[A-ZА-Яא-ת])/g, "$1$2 ");
+}
+
 export function displayText(content: string): string {
   const i = content.indexOf("<<");
-  return (i === -1 ? content : content.slice(0, i)).trimEnd();
+  return fixSentenceSpacing((i === -1 ? content : content.slice(0, i)).trimEnd());
 }
 
 export function blockRaw(content: string, tag: string): string | null {

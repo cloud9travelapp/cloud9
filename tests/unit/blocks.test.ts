@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   displayText,
+  fixSentenceSpacing,
   parseAssistantMessage,
   splitDates,
   splitFlights,
@@ -44,6 +45,28 @@ describe("displayText", () => {
   });
   it("strips a malformed marker so raw blocks never leak", () => {
     expect(displayText("הנה.\n<< STAYS >>{oops")).toBe("הנה.");
+  });
+});
+
+describe("fixSentenceSpacing (language-agnostic space-after-period guard)", () => {
+  it("fixes the English regression case", () => {
+    expect(fixSentenceSpacing("high ceiling.Only two rooms left.")).toBe(
+      "high ceiling. Only two rooms left.",
+    );
+  });
+  it("fixes Hebrew and question marks", () => {
+    expect(fixSentenceSpacing("נהדר.נמשיך לתאריכים?מצוין")).toBe(
+      "נהדר. נמשיך לתאריכים? מצוין",
+    );
+  });
+  it("leaves decimals, domains, acronyms and ellipses alone", () => {
+    expect(fixSentenceSpacing("rated 4.5 stars")).toBe("rated 4.5 stars");
+    expect(fixSentenceSpacing("cloud9app.io works")).toBe("cloud9app.io works");
+    expect(fixSentenceSpacing("the U.S.A. flight")).toBe("the U.S.A. flight");
+    expect(fixSentenceSpacing("בודק טיסות...")).toBe("בודק טיסות...");
+  });
+  it("is applied by displayText", () => {
+    expect(displayText("Done.Next<<OPTIONS>>")).toBe("Done. Next");
   });
 });
 
