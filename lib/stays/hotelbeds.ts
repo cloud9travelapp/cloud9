@@ -3,6 +3,7 @@ import type {
   BudgetLevel,
   Room,
   RoomRate,
+  StayAvailabilityCheck,
   StayByNameResult,
   StayOffer,
   StayQuery,
@@ -571,6 +572,68 @@ export async function hotelbedsFindStayByName(
     matchedName: matches[0].name,
     alternatives: alternatives(),
   });
+}
+
+/**
+ * Availability recheck for hearted hotels (the junction's 🤍 flow) — called
+ * ON DEMAND only, right before favorites are surfaced; never a background
+ * poll. One availability-by-codes call for ALL hb- favorites (hbh| cache
+ * key, 24h, quota-counted); "mock-" snapshots (quota-fallback hearts) use
+ * the deterministic mock probe. checked:false on quota exhaustion — an
+ * honest "couldn't verify", never a guess.
+ */
+export async function hotelbedsVerifyStays(
+  snapshots: StayOffer[],
+  stay: { checkIn: string; checkOut: string; guests?: number; rooms?: number },
+): Promise<StayAvailabilityCheck> {
+  const available: StayOffer[] = [];
+  const unavailable: Array<{ id: string; name: string }> = [];
+
+  // Mock-id snapshots verify by the mock convention ("closed" name probe).
+  const hbSnapshots: StayOffer[] = [];
+  for (const s of snapshots) {
+    if (s.id.startsWith("hb-")) hbSnapshots.push(s);
+    else if (s.name.toLowerCase().includes("closed")) {
+      unavailable.push({ id: s.id, name: s.name });
+    } else available.push(s);
+  }
+  if (hbSnapshots.length === 0) return { checked: true, available, unavailable };
+
+  const codes = hbSnapshots
+    .map((s) => Number(s.id.slice(3)))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  const query: StayQuery = {
+    destination: "favorites-recheck",
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    guests: stay.guests,
+    rooms: stay.rooms,
+  };
+  const key = [
+    "hbh",
+    codes.join("-"),
+    stay.checkIn,
+    stay.checkOut,
+    stay.guests ?? 2,
+    stay.rooms ?? 1,
+  ].join("|");
+
+  let fresh = await cacheGet(key);
+  if (!fresh) {
+    if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
+      await logDiag("stays_quota_fallback", { path: "check_favorites" });
+      return { checked: false, available: [], unavailable: [] };
+    }
+    fresh = await fetchAvailability({ hotels: { hotel: codes } }, key, query);
+  }
+  const freshById = new Map(fresh.map((o) => [o.id, o]));
+  for (const s of hbSnapshots) {
+    const f = freshById.get(s.id);
+    if (f) available.push(f);
+    else unavailable.push({ id: s.id, name: s.name });
+  }
+  return { checked: true, available, unavailable };
 }
 
 const DEAL_MIN_DISCOUNT = 0.3; // v1 starting constant (approved)

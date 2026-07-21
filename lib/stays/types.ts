@@ -32,6 +32,16 @@ export type StayByNameStatus =
   | "not_in_inventory" // no name match in the destination's inventory index
   | "lookup_failed"; // couldn't check (quota/technical) — NOT a claim about the hotel
 
+/** Result of re-checking hearted hotels' live availability (the junction's
+ *  🤍 flow). checked:false = the lookup itself failed (quota/technical) —
+ *  it says NOTHING about the hotels; the concierge must not claim either way. */
+export type StayAvailabilityCheck = {
+  checked: boolean;
+  /** Fresh offers (current prices) for the still-available favorites. */
+  available: StayOffer[];
+  unavailable: Array<{ id: string; name: string }>;
+};
+
 export type StayByNameResult = {
   status: StayByNameStatus;
   /** Canonical inventory name of the best match (when one exists). */

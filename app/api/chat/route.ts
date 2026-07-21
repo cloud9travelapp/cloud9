@@ -12,6 +12,7 @@ import type { FlightQuery } from "@/lib/flights/types";
 import {
   searchStays,
   searchStayByName,
+  verifyStays,
   IS_MOCK_STAY_PROVIDER,
 } from "@/lib/stays/provider";
 import type { StayOffer, StayQuery } from "@/lib/stays/types";
@@ -176,6 +177,75 @@ async function runHotelDetails(input: unknown): Promise<string> {
     console.error("Hotel details failed:", err);
     await logDiag("hotel_details_error", { message: String(err).slice(0, 300) });
     return "Hotel details are unavailable right now.";
+  }
+}
+
+const CHECK_FAVORITES_TOOL: Anthropic.Tool = {
+  name: "check_favorites",
+  description:
+    "Re-check the live availability of the traveler's hearted (favorited) hotels for this trip. Call it RIGHT BEFORE surfacing or reviewing their favorites (the junction's 🤍 flow) — never in the background, never answer about favorites from memory. Pass the trip's stay dates from the conversation.",
+  input_schema: {
+    type: "object",
+    properties: {
+      checkIn: { type: "string", description: "Check-in date, YYYY-MM-DD" },
+      checkOut: { type: "string", description: "Check-out date, YYYY-MM-DD" },
+      guests: { type: "integer", description: "Number of guests (default 2)" },
+    },
+    required: ["checkIn", "checkOut"],
+  },
+};
+
+/** Run a check_favorites call: load the trip's hearted stays, verify live
+ *  availability in ONE quota-guarded call, return honest JSON. */
+async function runCheckFavorites(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  tripId: string,
+  input: unknown,
+): Promise<string> {
+  try {
+    const q = (input ?? {}) as {
+      checkIn?: unknown;
+      checkOut?: unknown;
+      guests?: unknown;
+    };
+    const checkIn = typeof q.checkIn === "string" ? q.checkIn : "";
+    const checkOut = typeof q.checkOut === "string" ? q.checkOut : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+      return "Invalid request: need checkIn and checkOut as YYYY-MM-DD.";
+    }
+    const { data, error } = await admin
+      .from("trip_favorites")
+      .select("item")
+      .eq("trip_id", tripId)
+      .eq("item_type", "stay")
+      .order("created_at", { ascending: false });
+    if (error || !data || data.length === 0) {
+      return JSON.stringify({ checked: true, available: [], unavailable: [], note: "No hearted hotels for this trip." });
+    }
+    const snapshots = (data as Array<{ item: StayOffer }>).map((r) => r.item);
+    const result = await withTimeout(
+      verifyStays(snapshots, {
+        checkIn,
+        checkOut,
+        guests: typeof q.guests === "number" ? q.guests : undefined,
+      }),
+      15000,
+    );
+    const mock =
+      IS_MOCK_STAY_PROVIDER ||
+      (result.available.length > 0 &&
+        result.available.every((o) => o.id.startsWith("mock-")));
+    await logDiag("check_favorites", {
+      trip: tripId,
+      checked: result.checked,
+      available: result.available.length,
+      unavailable: result.unavailable.length,
+    });
+    return JSON.stringify({ ...result, mock });
+  } catch (err) {
+    console.error("check_favorites failed:", err);
+    await logDiag("check_favorites_error", { message: String(err).slice(0, 300) });
+    return JSON.stringify({ checked: false, available: [], unavailable: [] });
   }
 }
 
@@ -677,7 +747,13 @@ THE WHAT-NOW JUNCTION — the standard transition between pieces. Whenever a com
   1. "🤍 המלונות שאהבת (N)" — ONLY when hearted favorites exist for a piece that is still open (their list, when any, appears at the end of these instructions; N is their count). Tapping it enters the favorites-review flow.
   2. The next logical open piece, named concretely — "טיסת חזור", "מלון להאנוי".
   3. "סיימתי בינתיים" — always last.
-2-4 pills; the junction IS your one question for that turn. When exactly ONE piece remains open, open with "הטיול כמעט סגור — נשאר רק [X]." before the pills. TIMING unchanged: never a junction in the same message as offer cards — offers own their message; when the close itself involved cards, the junction is your NEXT turn, after they react. "סיימתי בינתיים" gets a courteous short close that names what's still open for next time — never a goodbye that pretends the plan is complete. Never treat the plan as finished while something is missing: any wrap-up or summary must distinguish what's booked-ready from what's still open.
+2-4 pills; the junction IS your one question for that turn. When exactly ONE piece remains open, open with "הטיול כמעט סגור — נשאר רק [X]." before the pills.
+
+FAVORITES REVIEW (they tapped the 🤍 pill, or asked about their hearted hotels in any words): FIRST call check_favorites with the trip's dates — hearts go stale; never answer about them from memory. Then, by the result:
+- Everything available → one short line + a STAYS block with the AVAILABLE offers copied verbatim from the tool result (recommendedId allowed — your pick among their favorites). Choosing happens from the cards, as always.
+- Some unavailable → report honestly first, with the numbers and the one sanctioned 😔 — "מ-3 שאהבת — 2 זמינים; [X] נתפס 😔" — and ask ONE question with pills: "הצג את הזמינים" / "חפש דומה ל-[X]". Show-available → cards message (verbatim offers). Find-similar → run search_stays for the same dates seeded by the vanished hotel's traits (stars, area, amenities) plus everything their hearts say, and open the results with "בהתאם למה שאהבת —".
+- "checked": false → the lookup itself failed; that says NOTHING about the hotels. Say plainly you couldn't verify right now ("לא הצלחתי לוודא זמינות כרגע — הרשימה שמורה במועדפים; ננסה שוב מעט מאוחר יותר") and never present unverified favorites as available, with prices, or as cards.
+- A fresh price meaningfully different from what they hearted gets one passing mention — never silently absorbed. TIMING unchanged: never a junction in the same message as offer cards — offers own their message; when the close itself involved cards, the junction is your NEXT turn, after they react. "סיימתי בינתיים" gets a courteous short close that names what's still open for next time — never a goodbye that pretends the plan is complete. Never treat the plan as finished while something is missing: any wrap-up or summary must distinguish what's booked-ready from what's still open.
 
 Second thoughts about a picked offer (any phrasing — "אני מתחרט", "לא בטוח לגבי המלון", "show me other options"): that choice REOPENS — the old selection is replaced, not still standing, and later summaries never mention the abandoned offer as if it holds. Don't just re-show the same list, and don't read regret as quitting the planning. FIRST ask ONE sharp clarifying question with options carrying real dimensions, folding the AREA SCOPE into the same options (e.g. "המחיר" / "המיקום — לנסות אזור אחר" / "משהו אחר") — still one question. If their answer doesn't touch area (price, vibe), re-search the SAME area and say so in passing ("נשארתי באותו אזור"). THEN search again with the refined preference and present fresh cards. What you learn is a STANDING preference for the rest of this trip ("wants a pool", "closer to the beach", "cheaper") — apply it to every later search without being asked again. Their screen no longer shows old cards: if they ask what the options were ("מה היו האופציות?"), run the search again and present cards — never recite remembered offers in text.
 
@@ -793,7 +869,13 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             max_tokens: 4096,
             thinking: { type: "disabled" },
             system: systemBlocks,
-            tools: [FLIGHT_TOOL, STAY_TOOL, HOTEL_DETAILS_TOOL, PREFERENCE_TOOL],
+            tools: [
+              FLIGHT_TOOL,
+              STAY_TOOL,
+              HOTEL_DETAILS_TOOL,
+              CHECK_FAVORITES_TOOL,
+              PREFERENCE_TOOL,
+            ],
             messages: anthropicMessages,
           });
 
@@ -822,6 +904,7 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
               block.name === "search_flights" ||
               block.name === "search_stays" ||
               block.name === "get_hotel_details" ||
+              block.name === "check_favorites" ||
               block.name === "remember_preference";
             let result: string;
             if (block.name === "search_flights") {
@@ -832,6 +915,8 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
               if (r.moreKey) staysMoreKey = r.moreKey;
             } else if (block.name === "get_hotel_details") {
               result = await runHotelDetails(block.input);
+            } else if (block.name === "check_favorites") {
+              result = await runCheckFavorites(admin, trip.id, block.input);
             } else if (block.name === "remember_preference") {
               result = await rememberPreference(
                 admin,

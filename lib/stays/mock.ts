@@ -1,4 +1,4 @@
-import type { StayByNameResult, StayOffer, StayQuery, StayType } from "./types";
+import type { StayAvailabilityCheck, StayByNameResult, StayOffer, StayQuery, StayType } from "./types";
 
 // Deterministic-but-varied fake data: the same query always yields the same
 // offers, while different queries look meaningfully different. Mirrors the
@@ -175,4 +175,25 @@ export async function mockFindStayByName(
     offer: { ...base, name, type: "hotel" },
     alternatives: [],
   };
+}
+
+/**
+ * Mock availability recheck for hearted hotels — mirrors the real provider's
+ * honesty statuses deterministically: a snapshot whose name contains
+ * "closed" is unavailable; everything else returns its snapshot as the
+ * "fresh" offer. (Same convention as mockFindStayByName.)
+ */
+export async function mockVerifyStays(
+  snapshots: StayOffer[],
+): Promise<StayAvailabilityCheck> {
+  const available: StayOffer[] = [];
+  const unavailable: Array<{ id: string; name: string }> = [];
+  for (const s of snapshots) {
+    if (s.name.toLowerCase().includes("closed")) {
+      unavailable.push({ id: s.id, name: s.name });
+    } else {
+      available.push(s);
+    }
+  }
+  return { checked: true, available, unavailable };
 }

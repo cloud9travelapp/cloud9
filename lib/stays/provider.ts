@@ -1,9 +1,15 @@
-import type { StayByNameResult, StayOffer, StayQuery } from "./types";
-import { mockFindStayByName, mockSearchStays } from "./mock";
+import type {
+  StayAvailabilityCheck,
+  StayByNameResult,
+  StayOffer,
+  StayQuery,
+} from "./types";
+import { mockFindStayByName, mockSearchStays, mockVerifyStays } from "./mock";
 import {
   hotelbedsFindStayByName,
   hotelbedsPeekStays,
   hotelbedsSearchStays,
+  hotelbedsVerifyStays,
 } from "./hotelbeds";
 
 const STAY_PROVIDER = process.env.STAY_PROVIDER || "mock";
@@ -64,5 +70,22 @@ export async function peekStays(query: StayQuery): Promise<StayOffer[] | null> {
     case "mock":
     default:
       return mockSearchStays(query);
+  }
+}
+
+/**
+ * Live-availability recheck for hearted hotels (the junction's 🤍 flow) —
+ * on-demand only. NEW function per the ground rules — searchStays untouched.
+ */
+export async function verifyStays(
+  snapshots: StayOffer[],
+  stay: { checkIn: string; checkOut: string; guests?: number; rooms?: number },
+): Promise<StayAvailabilityCheck> {
+  switch (STAY_PROVIDER) {
+    case "hotelbeds":
+      return hotelbedsVerifyStays(snapshots, stay);
+    case "mock":
+    default:
+      return mockVerifyStays(snapshots);
   }
 }

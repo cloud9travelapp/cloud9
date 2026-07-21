@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mockSearchFlights } from "@/lib/flights/mock";
-import { mockFindStayByName, mockSearchStays } from "@/lib/stays/mock";
+import { mockFindStayByName, mockSearchStays, mockVerifyStays } from "@/lib/stays/mock";
 import {
   detectDeal,
   filterForBudget,
@@ -280,5 +280,25 @@ describe("mockFindStayByName (hotel-by-name honesty paths)", () => {
     expect(r.status).toBe("not_in_inventory");
     expect(r.offer).toBeUndefined();
     expect(r.alternatives.length).toBeGreaterThan(0);
+  });
+});
+
+describe("mockVerifyStays (favorites recheck honesty paths)", () => {
+  const snap = (id: string, name: string): StayOffer => ({
+    id, name, type: "hotel", area: "X", stars: 4, amenities: [],
+    pricePerNight: 100, totalPrice: 400, currency: "USD",
+  });
+  it("splits available and vanished deterministically ('closed' probe)", async () => {
+    const r = await mockVerifyStays([
+      snap("mock-a", "Sunny Hotel"),
+      snap("mock-b", "Closed Palace"),
+    ]);
+    expect(r.checked).toBe(true);
+    expect(r.available.map((o) => o.id)).toEqual(["mock-a"]);
+    expect(r.unavailable).toEqual([{ id: "mock-b", name: "Closed Palace" }]);
+  });
+  it("empty input verifies to empty, still checked", async () => {
+    const r = await mockVerifyStays([]);
+    expect(r).toEqual({ checked: true, available: [], unavailable: [] });
   });
 });
