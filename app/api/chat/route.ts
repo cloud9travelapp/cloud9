@@ -150,8 +150,15 @@ async function runHotelDetails(input: unknown): Promise<string> {
     if (!hotelId) {
       return "Invalid request: hotelId is required (the offer id from search_stays).";
     }
-    const { images, ...detail } = await getStayDetail(hotelId);
-    return JSON.stringify({ ...detail, imageCount: images.length });
+    const { images, rooms, ...detail } = await getStayDetail(hotelId);
+    // Image URLs are useless in model context (the modal shows them) — the
+    // per-room lists are stripped the same way as the gallery.
+    const compactRooms =
+      rooms?.map(({ images: roomImages, ...room }) => ({
+        ...room,
+        ...(roomImages?.length ? { imageCount: roomImages.length } : {}),
+      })) ?? rooms;
+    return JSON.stringify({ ...detail, rooms: compactRooms, imageCount: images.length });
   } catch (err) {
     console.error("Hotel details failed:", err);
     await logDiag("hotel_details_error", { message: String(err).slice(0, 300) });

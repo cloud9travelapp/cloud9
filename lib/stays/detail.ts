@@ -1,8 +1,24 @@
 import "server-only";
-import type { StayDetail } from "./types";
+import type { Room, StayDetail } from "./types";
 import { mockStayDetail } from "./mock-detail";
 import { getCapturedRooms } from "./hotelbeds";
 import { getHotelbedsContent } from "./hotelbeds-content";
+
+/**
+ * Join room-level content photos onto captured rooms by EXACT room code —
+ * a room without a match renders exactly as before (the honest fallback:
+ * no photo beats a wrong room's photo). Exported for tests.
+ */
+export function attachRoomImages(
+  rooms: Room[] | null,
+  roomImages: Record<string, string[]> | undefined,
+): Room[] | null {
+  if (!rooms || !roomImages) return rooms;
+  return rooms.map((r) => {
+    const images = roomImages[r.code];
+    return images?.length ? { ...r, images } : r;
+  });
+}
 
 /**
  * Provider-agnostic hotel detail for the modal and the get_hotel_details
@@ -31,7 +47,7 @@ export async function getStayDetail(hotelId: string): Promise<StayDetail> {
       area: content?.area,
       reviewScore: content?.reviewScore,
       reviewCount: content?.reviewCount,
-      rooms: captured?.rooms ?? null,
+      rooms: attachRoomImages(captured?.rooms ?? null, content?.roomImages),
       currency: captured?.currency,
       pricedFor: captured
         ? {

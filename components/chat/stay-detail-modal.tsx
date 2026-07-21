@@ -291,14 +291,29 @@ export function StayDetailModal({
                 <div className="mt-2 flex flex-col gap-2">
                   {detail.rooms.map((room) => (
                     <div key={room.code} className="rounded-xl border border-c-border px-3 py-2.5">
-                      <div dir="auto" className="text-sm font-semibold text-c-ink">{room.name}</div>
-                      {room.features.length > 0 ? (
-                        <div dir="auto" className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-c-muted">
-                          {room.features.map((f) => (
-                            <span key={f}>{L.feature[f] ?? f}</span>
-                          ))}
+                      <div className="flex items-start gap-2.5">
+                        {/* room photo when the content carries one — absent
+                            rooms render exactly as before (honest fallback) */}
+                        {room.images?.[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={room.images[0]}
+                            alt={room.name}
+                            loading="lazy"
+                            className="h-14 w-20 flex-none rounded-lg object-cover"
+                          />
+                        ) : null}
+                        <div dir="auto" className="min-w-0 text-sm font-semibold text-c-ink">
+                          {room.name}
+                          {room.features.length > 0 ? (
+                            <div dir="auto" className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-normal text-c-muted">
+                              {room.features.map((f) => (
+                                <span key={f}>{L.feature[f] ?? f}</span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
+                      </div>
                       <div dir="auto" className="mt-2 flex flex-wrap gap-1.5">
                         {room.rates.map((rate) => (
                           <button

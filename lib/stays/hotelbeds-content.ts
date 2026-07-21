@@ -30,7 +30,14 @@ export type HotelContent = {
   area?: string;
   reviewScore?: number; // 0-10, only when the Content API carries review data
   reviewCount?: number;
+  /** Room-level images keyed by the provider room code (matches availability
+   *  room codes, e.g. "DBL.ST"). Always present since the room-photos round —
+   *  its ABSENCE marks a pre-round cache entry that needs one refetch. */
+  roomImages?: Record<string, string[]>;
 };
+
+const MAX_ROOM_IMAGES = 3; // per room, ordered by visualOrder
+const MAX_IMAGE_ROOMS = 16; // distinct room codes worth carrying
 
 const AMENITY_PATTERNS: Array<[RegExp, string]> = [
   [/WI-?FI|WIRELESS/i, "wifi"],
@@ -51,7 +58,12 @@ type ContentApiHotel = {
   address?: { content?: string };
   city?: { content?: string };
   zoneName?: string;
-  images?: Array<{ path?: string; visualOrder?: number; order?: number }>;
+  images?: Array<{
+    path?: string;
+    visualOrder?: number;
+    order?: number;
+    roomCode?: string;
+  }>;
   facilities?: Array<{ facilityCode?: number; facilityGroupCode?: number }>;
 };
 type FacilityCatalogEntry = {
@@ -134,16 +146,27 @@ export function mapHotelContent(
   hotel: ContentApiHotel,
   facilityNames: Record<string, string>,
 ): HotelContent {
-  const images = (hotel.images ?? [])
-    .filter((i): i is { path: string; visualOrder?: number; order?: number } =>
-      typeof i.path === "string",
+  const sorted = (hotel.images ?? [])
+    .filter(
+      (i): i is { path: string; visualOrder?: number; order?: number; roomCode?: string } =>
+        typeof i.path === "string",
     )
     .sort(
       (a, b) =>
         (a.visualOrder ?? a.order ?? 999) - (b.visualOrder ?? b.order ?? 999),
-    )
-    .slice(0, MAX_IMAGES)
-    .map((i) => `${PHOTO_BASE}${i.path}`);
+    );
+  const images = sorted.slice(0, MAX_IMAGES).map((i) => `${PHOTO_BASE}${i.path}`);
+  // Room-level images ride the same response tagged with a roomCode — carry
+  // the association (dropped before the room-photos round) so the modal's
+  // room mini-cards can show their photos.
+  const roomImages: Record<string, string[]> = {};
+  for (const i of sorted) {
+    if (!i.roomCode) continue;
+    const bucket = roomImages[i.roomCode];
+    if (!bucket && Object.keys(roomImages).length >= MAX_IMAGE_ROOMS) continue;
+    if ((bucket?.length ?? 0) >= MAX_ROOM_IMAGES) continue;
+    (roomImages[i.roomCode] ??= []).push(`${PHOTO_BASE}${i.path}`);
+  }
   return {
     name: hotel.name?.content,
     description: hotel.description?.content,
@@ -151,8 +174,12 @@ export function mapHotelContent(
     amenities: amenitiesFromFacilities(hotel.facilities ?? [], facilityNames),
     address: hotel.address?.content,
     area: hotel.zoneName ?? hotel.city?.content,
+    roomImages,
     // reviewScore/reviewCount intentionally absent unless review data shows
     // up in the raw response (see the field stash below) — display-when-present.
+    // Confirmed 2026-07-21 (content_api_fields diag, live opens): the TEST
+    // environment's Content API carries NO review fields — first-party
+    // verified reviews are the primary strategy.
   };
 }
 
@@ -336,7 +363,10 @@ export async function getHotelbedsContent(
   hotelCode: string,
 ): Promise<HotelContent | null> {
   const cached = await cacheGetContent("hotelbeds", hotelCode);
-  if (cached) return cached as HotelContent;
+  // Entries cached before the room-photos round lack roomImages entirely —
+  // treat those as a miss ONCE; the refetched entry always carries the field
+  // (possibly {}), so this can't loop.
+  if (cached && "roomImages" in cached) return cached as HotelContent;
   try {
     const res = await fetch(
       `${HOTELBEDS_BASE_URL}/hotel-content-api/1.0/hotels/${encodeURIComponent(hotelCode)}/details?language=ENG&useSecondaryLanguage=false`,

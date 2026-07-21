@@ -5,6 +5,7 @@ import {
   matchHotelName,
   normalizeHotelName,
 } from "@/lib/stays/hotelbeds-content";
+import { attachRoomImages } from "@/lib/stays/detail";
 
 const CATALOG: Record<string, string> = {
   "60|261": "Wi-fi",
@@ -77,6 +78,55 @@ describe("mapHotelContent", () => {
     expect(content.images).toEqual([]);
     expect(content.amenities).toEqual([]);
     expect(content.name).toBeUndefined();
+    expect(content.roomImages).toEqual({}); // always present post-round (cache marker)
+  });
+
+  it("groups room-tagged images by roomCode, ordered, capped at 3/room", () => {
+    const content = mapHotelContent(
+      {
+        images: [
+          { path: "lobby.jpg", visualOrder: 1 },
+          { path: "dbl-2.jpg", visualOrder: 5, roomCode: "DBL.ST" },
+          { path: "dbl-1.jpg", visualOrder: 4, roomCode: "DBL.ST" },
+          { path: "dbl-3.jpg", visualOrder: 6, roomCode: "DBL.ST" },
+          { path: "dbl-4.jpg", visualOrder: 7, roomCode: "DBL.ST" },
+          { path: "sui-1.jpg", visualOrder: 8, roomCode: "SUI.KG" },
+        ],
+      },
+      {},
+    );
+    expect(content.roomImages).toEqual({
+      "DBL.ST": [
+        "https://photos.hotelbeds.com/giata/bigger/dbl-1.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/dbl-2.jpg",
+        "https://photos.hotelbeds.com/giata/bigger/dbl-3.jpg",
+      ],
+      "SUI.KG": ["https://photos.hotelbeds.com/giata/bigger/sui-1.jpg"],
+    });
+    // room-tagged images still count for the main gallery as before
+    expect(content.images).toContain("https://photos.hotelbeds.com/giata/bigger/lobby.jpg");
+  });
+});
+
+describe("attachRoomImages", () => {
+  const room = (code: string) => ({
+    code,
+    name: code,
+    features: [],
+    rates: [{ board: "RO" as const, pricePerNight: 100, totalPrice: 400 }],
+  });
+  it("joins by exact room code; unmatched rooms stay untouched (honest fallback)", () => {
+    const rooms = attachRoomImages([room("DBL.ST"), room("TWN.ST")], {
+      "DBL.ST": ["https://x/dbl.jpg"],
+      "SUI.KG": ["https://x/sui.jpg"],
+    });
+    expect(rooms![0].images).toEqual(["https://x/dbl.jpg"]);
+    expect(rooms![1].images).toBeUndefined();
+  });
+  it("passes through null rooms and missing maps", () => {
+    expect(attachRoomImages(null, { A: ["x"] })).toBeNull();
+    const rooms = [room("A")];
+    expect(attachRoomImages(rooms, undefined)).toBe(rooms);
   });
 });
 

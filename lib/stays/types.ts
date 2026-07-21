@@ -80,6 +80,9 @@ export type Room = {
   name: string;
   features: string[]; // neutral keys (balcony, seaView, terrace, suite)
   rates: RoomRate[]; // cheapest rate per board, cheapest board first
+  /** Room-level photos (absolute URLs), joined from hotel content by exact
+   *  room code — absent when the content has none for this room. */
+  images?: string[];
 };
 
 export type StayDetail = {
