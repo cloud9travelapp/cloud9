@@ -3,7 +3,6 @@ import {
   displayText,
   fixSentenceSpacing,
   parseAssistantMessage,
-  sortStayOffers,
   splitDates,
   splitFlights,
   splitOptions,
@@ -131,21 +130,6 @@ describe("splitStays", () => {
   });
 });
 
-describe("splitStays recommendedId", () => {
-  it("parses a recommendedId that names a shown offer", () => {
-    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, recommendedId: "s1", offers: [STAY_OFFER] })}\n<<END>>`;
-    expect(splitStays(msg).stays?.recommendedId).toBe("s1");
-  });
-  it("drops a recommendedId that matches no shown offer (never a wrong badge)", () => {
-    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, recommendedId: "ghost", offers: [STAY_OFFER] })}\n<<END>>`;
-    expect(splitStays(msg).stays?.recommendedId).toBeUndefined();
-  });
-  it("absent recommendedId stays undefined", () => {
-    const msg = `הנה.\n<<STAYS>>\n${JSON.stringify({ lang: "he", mock: false, offers: [STAY_OFFER] })}\n<<END>>`;
-    expect(splitStays(msg).stays?.recommendedId).toBeUndefined();
-  });
-});
-
 describe("splitDates", () => {
   it("parses he range", () => {
     const r = splitDates('מצוין. נבחר תאריכים:\n<<DATES>>\n{"lang":"he","mode":"range"}\n<<END>>');
@@ -199,30 +183,5 @@ describe("parseAssistantMessage (mutually exclusive, cards win ties)", () => {
       options: null,
       dates: null,
     });
-  });
-});
-
-describe("sortStayOffers (client-side sort chips)", () => {
-  const mk = (id: string, price: number, km?: number, min?: number) => ({
-    ...STAY_OFFER, id, pricePerNight: price, distanceKm: km, distanceMinutes: min,
-  });
-  const offers = [mk("a", 120, 3.1), mk("b", 90, 0.4), mk("c", 200, 1.2)];
-  it("fit floats the recommended card, keeps delivered order otherwise", () => {
-    expect(sortStayOffers(offers, "fit", "c").map((o) => o.id)).toEqual(["c", "a", "b"]);
-    expect(sortStayOffers(offers, "fit").map((o) => o.id)).toEqual(["a", "b", "c"]);
-  });
-  it("price both ways", () => {
-    expect(sortStayOffers(offers, "priceAsc").map((o) => o.id)).toEqual(["b", "a", "c"]);
-    expect(sortStayOffers(offers, "priceDesc").map((o) => o.id)).toEqual(["c", "a", "b"]);
-  });
-  it("distance: km ascending, missing km last, mock minutes as tie-break", () => {
-    expect(sortStayOffers(offers, "distance").map((o) => o.id)).toEqual(["b", "c", "a"]);
-    const mocky = [mk("m1", 100, undefined, 12), mk("m2", 100, undefined, 4)];
-    expect(sortStayOffers(mocky, "distance").map((o) => o.id)).toEqual(["m2", "m1"]);
-  });
-  it("never mutates the input", () => {
-    const before = offers.map((o) => o.id);
-    sortStayOffers(offers, "priceDesc");
-    expect(offers.map((o) => o.id)).toEqual(before);
   });
 });

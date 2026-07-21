@@ -11,15 +11,11 @@ import {
   QuickReplyPills,
   FlightCard,
   StayCard,
-  StaySortChips,
   DateCalendar,
   type Lang,
-  type StayOfferView,
-  type StaySortMode,
-  type StaysPayload,
 } from "./message-parts";
 import { StayDetailModal } from "./stay-detail-modal";
-import { parseAssistantMessage, sortStayOffers } from "@/lib/chat/blocks";
+import { parseAssistantMessage } from "@/lib/chat/blocks";
 import HeroDithering from "@/components/landing/hero-dithering";
 
 // Starter prompts shown on the empty state (interface language: English).
@@ -93,43 +89,6 @@ export function StreamedText({ text }: { text: string }) {
     if (c >= 0xd800 && c <= 0xdbff) cut -= 1;
   }
   return <span className="whitespace-pre-wrap">{text.slice(0, cut)}</span>;
-}
-
-/**
- * The stays card stack: sort chips (when there's something to sort) + cards.
- * Default "fit" = the delivered smart order with the recommended card first;
- * re-sorting is pure client state — no API calls, resets with the next
- * message (cards only render on the latest message anyway).
- */
-function StayStack({
-  stays,
-  onSelect,
-  onOpenDetail,
-}: {
-  stays: StaysPayload;
-  onSelect: (choice: string) => void;
-  onOpenDetail: (offer: StayOfferView) => void;
-}) {
-  const [sort, setSort] = useState<StaySortMode>("fit");
-  const sorted = sortStayOffers(stays.offers, sort, stays.recommendedId);
-  return (
-    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
-      {stays.offers.length > 1 ? (
-        <StaySortChips lang={stays.lang} active={sort} onChange={setSort} />
-      ) : null}
-      {sorted.map((offer) => (
-        <StayCard
-          key={offer.id}
-          offer={offer}
-          mock={stays.mock}
-          lang={stays.lang}
-          recommended={offer.id === stays.recommendedId}
-          onSelect={onSelect}
-          onOpenDetail={() => onOpenDetail(offer)}
-        />
-      ))}
-    </div>
-  );
 }
 
 export default function ChatClient({
@@ -419,17 +378,24 @@ export default function ChatClient({
                     </div>
                   ) : null}
                   {stays && isLast && !isStreaming ? (
-                    <StayStack
-                      stays={stays}
-                      onSelect={(s) => void send(s)}
-                      onOpenDetail={(offer) =>
-                        setDetailFor({
-                          id: offer.id,
-                          name: offer.name,
-                          lang: stays.lang,
-                        })
-                      }
-                    />
+                    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
+                      {stays.offers.map((offer) => (
+                        <StayCard
+                          key={offer.id}
+                          offer={offer}
+                          mock={stays.mock}
+                          lang={stays.lang}
+                          onSelect={(s) => void send(s)}
+                          onOpenDetail={() =>
+                            setDetailFor({
+                              id: offer.id,
+                              name: offer.name,
+                              lang: stays.lang,
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
                   ) : null}
                   {/* Like the pills, the calendar is only actionable on the
                       latest message — stale calendars don't linger in history. */}

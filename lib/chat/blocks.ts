@@ -15,44 +15,8 @@ import type {
   FlightsPayload,
   Lang,
   StayOfferView,
-  StaySortMode,
   StaysPayload,
 } from "@/components/chat/message-parts";
-
-/**
- * Client-side stays re-sort (the chips above the card stack). Pure — never
- * mutates. "fit" = delivered order (server smart sort) with the recommended
- * card floated to the top; distance sorts by km (mock offers have only
- * walking minutes, used as the tie-break so mock stacks still respond).
- */
-export function sortStayOffers(
-  offers: StayOfferView[],
-  mode: StaySortMode,
-  recommendedId?: string,
-): StayOfferView[] {
-  const s = [...offers];
-  switch (mode) {
-    case "priceAsc":
-      return s.sort((a, b) => a.pricePerNight - b.pricePerNight);
-    case "priceDesc":
-      return s.sort((a, b) => b.pricePerNight - a.pricePerNight);
-    case "distance":
-      return s.sort(
-        (a, b) =>
-          (a.distanceKm ?? Number.POSITIVE_INFINITY) -
-            (b.distanceKm ?? Number.POSITIVE_INFINITY) ||
-          (a.distanceMinutes ?? Number.POSITIVE_INFINITY) -
-            (b.distanceMinutes ?? Number.POSITIVE_INFINITY),
-      );
-    case "fit":
-    default:
-      if (!recommendedId) return s;
-      return [
-        ...s.filter((o) => o.id === recommendedId),
-        ...s.filter((o) => o.id !== recommendedId),
-      ];
-  }
-}
 
 /**
  * Deterministic guard for the "space after sentence punctuation" writing rule
@@ -163,15 +127,13 @@ export function splitStays(content: string): {
     let mock = true;
     let lang: Lang = "en";
     let offersRaw: unknown;
-    let recommendedRaw: unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown; recommendedId?: unknown };
+    if (Array.isArray(parsed)) {
+      offersRaw = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown };
       offersRaw = obj.offers;
       mock = obj.mock !== false; // label unless explicitly false
       lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
-      recommendedRaw = obj.recommendedId;
-    } else if (Array.isArray(parsed)) {
-      offersRaw = parsed;
     }
     if (!Array.isArray(offersRaw)) return { text, stays: null };
     const offers = offersRaw.filter((o): o is StayOfferView => {
@@ -184,15 +146,7 @@ export function splitStays(content: string): {
       );
     });
     if (!offers.length) return { text, stays: null };
-    const shown = offers.slice(0, 8);
-    // A recommendation only counts when it names a SHOWN offer — anything
-    // else (typo, dropped offer) degrades to no badge, never a wrong badge.
-    const recommendedId =
-      typeof recommendedRaw === "string" &&
-      shown.some((o) => o.id === recommendedRaw)
-        ? recommendedRaw
-        : undefined;
-    return { text, stays: { mock, lang, offers: shown, ...(recommendedId ? { recommendedId } : {}) } };
+    return { text, stays: { mock, lang, offers: offers.slice(0, 8) } };
   } catch {
     return { text, stays: null };
   }
