@@ -175,7 +175,7 @@ function StayStack({
 
   const sorted = sortStayOffers(offers, sort, recommendedId);
   return (
-    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
+    <div className="mt-2 flex w-full max-w-full md:max-w-[82%] flex-col gap-2">
       {offers.length > 1 ? (
         <StaySortChips lang={stays.lang} active={sort} onChange={setSort} />
       ) : null}
@@ -533,7 +533,7 @@ export default function ChatClient({
                       a conversational re-search, and stale Select buttons can't
                       post outdated choices. */}
                   {flights && isLast && !isStreaming ? (
-                    <div className="mt-2 flex w-full max-w-[82%] flex-col gap-2">
+                    <div className="mt-2 flex w-full max-w-full md:max-w-[82%] flex-col gap-2">
                       {flights.offers.map((offer) => (
                         <FlightCard
                           key={offer.id}
@@ -574,7 +574,7 @@ export default function ChatClient({
                   {/* Like the pills, the calendar is only actionable on the
                       latest message — stale calendars don't linger in history. */}
                   {dates && isLast && !isStreaming ? (
-                    <div className="mt-2 w-full max-w-[82%]">
+                    <div className="mt-2 w-full max-w-full md:max-w-[82%]">
                       <DateCalendar
                         mode={dates.mode}
                         lang={dates.lang}
