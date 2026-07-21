@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { auth, signIn, signOut } from "@/auth";
-import HeroDithering from "@/components/landing/hero-dithering";
-import PhaseTypewriter from "@/components/landing/phase-typewriter";
+import HeroAtmosphere from "@/components/landing/hero/hero-atmosphere";
+import HeroCopy from "@/components/landing/hero/hero-copy";
 import ChatDemo from "@/components/landing/chat-demo";
 import PhaseShowcase from "@/components/landing/phase-showcase";
 import { Lockup } from "@/components/brand/lockup";
+
+// The hero's live-demo card: floating, no device frame, warm card-lift shadow.
+const HERO_CARD =
+  "w-full max-w-md overflow-hidden rounded-panel border border-c-border bg-c-surface/85 card-lift backdrop-blur";
 
 const capabilities = [
   {
@@ -173,55 +177,16 @@ export default async function Home() {
         </div>
       </header>
 
-      {/* Hero — living sky: phase gradient + SkyClouds + the Dithering mist.
-         No `isolate`: the mist blends (screen on night) against the sky behind. */}
+      {/* Hero — product-led split: the concierge pitch beside the live demo,
+         over a warm CSS atmosphere (bloom + mesh + grain). The demo is the real
+         chat components playing a scripted trip, floated as a frameless card. */}
       <section className="relative overflow-hidden">
-        <HeroDithering />
-        <div className="relative z-10 mx-auto max-w-3xl px-6 pb-24 pt-24 text-center sm:pt-32">
-          <span className="inline-flex items-center gap-2 rounded-full border border-c-border bg-c-surface/70 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-c-accent backdrop-blur">
-            <span className="h-1.5 w-1.5 rounded-full bg-c-accent" />
-            AI travel concierge
-          </span>
-
-          <div className="mt-7">
-            <PhaseTypewriter />
+        <HeroAtmosphere />
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-14 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_minmax(0,27rem)]">
+          <HeroCopy align="start" />
+          <div className="hero-card-in mx-auto w-full max-w-md lg:mx-0">
+            <ChatDemo className={HERO_CARD} />
           </div>
-
-          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-c-muted">
-            Tell Cloud9 where you&apos;re dreaming of. Your concierge shapes the
-            route, the days, and the tables — so the trip plans itself and you
-            just go.
-          </p>
-
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/chat"
-              className="inline-flex items-center gap-2 rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-rest transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
-            >
-              Start planning
-              <span aria-hidden="true">→</span>
-            </Link>
-            <a
-              href="#handles"
-              className="inline-flex items-center rounded-full px-5 py-3.5 text-base font-semibold text-c-ink transition-colors hover:text-c-accent"
-            >
-              See how it works
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Live chat demo — the actual product, playing a scripted trip */}
-      <section className="mx-auto max-w-3xl px-6 pb-20 pt-4 text-center">
-        <h2 className="font-display text-3xl font-bold tracking-tight text-c-ink sm:text-4xl">
-          Watch a trip take shape
-        </h2>
-        <p className="mx-auto mt-3 max-w-lg text-lg text-c-muted">
-          This is the real concierge — ask for what you want, and the plan
-          starts filling itself in.
-        </p>
-        <div className="mt-10">
-          <ChatDemo />
         </div>
       </section>
 

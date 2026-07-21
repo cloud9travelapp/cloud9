@@ -59,7 +59,13 @@ function AgentRow({ children }: { children: React.ReactNode }) {
   return <div className="demo-msg flex flex-col items-start">{children}</div>;
 }
 
-export default function ChatDemo() {
+// Default container = the standalone floating card used on the current landing.
+// The hero previews pass their own container (e.g. warmer `card-lift` shadow,
+// column-filling width) so the demo can be framed differently without a fork.
+const DEFAULT_CONTAINER =
+  "mx-auto w-full max-w-md overflow-hidden rounded-panel border border-c-border bg-c-surface/80 shadow-float backdrop-blur";
+
+export default function ChatDemo({ className }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState(0);
 
@@ -98,11 +104,7 @@ export default function ChatDemo() {
   }, []);
 
   return (
-    <div
-      ref={ref}
-      dir="ltr"
-      className="mx-auto w-full max-w-md overflow-hidden rounded-panel border border-c-border bg-c-surface/80 shadow-float backdrop-blur"
-    >
+    <div ref={ref} dir="ltr" className={className ?? DEFAULT_CONTAINER}>
       {/* faux header */}
       <div className="flex items-center gap-2.5 border-b border-c-border px-4 py-3">
         <CloudMark size="h-8 w-8" />

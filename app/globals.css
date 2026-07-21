@@ -27,20 +27,22 @@
    showcase swatches), so a swatch can preview its own palette in isolation. */
 :root,
 [data-phase="midday"] {
-  --c-bg-1: #eaf2fb;
-  --c-bg-2: #ffffff;
-  --c-glow: #d3e9ff;
-  --c-cloud: #ffffff;
+  /* Grounds warmed toward cream (warm-premium); the blue mist stays the cool
+     "sky pop" — cream canvas + oceanic accent reads coastal-boutique. */
+  --c-bg-1: #f2eee6;
+  --c-bg-2: #fdfbf6;
+  --c-glow: #f0ead9;
+  --c-cloud: #fffdf8;
   --c-mist: #8fc0ea;
   --c-mist-opacity: 0.22;
   --c-mist-blend: normal;
-  --c-surface: #ffffff;
+  --c-surface: #fffdf8;
   --c-ink: #0f172a;
-  --c-muted: #566274;
+  --c-muted: #5e5a4f;
   --c-accent: #0369a1;
   --c-accent-soft: #e0f2fe;
   --c-on-accent: #ffffff;
-  --c-border: #e5ecf4;
+  --c-border: #e9e2d2;
 }
 
 /* Sunrise (05–08) — near-white warm base; mist is clear YELLOW-GOLD dawn light
@@ -64,20 +66,20 @@
 
 /* Morning (08–11) — near-white cool base; soft sky-blue mist. */
 [data-phase="morning"] {
-  --c-bg-1: #eaf3fd;
-  --c-bg-2: #ffffff;
-  --c-glow: #dcecfe;
-  --c-cloud: #ffffff;
+  --c-bg-1: #f1ede4;
+  --c-bg-2: #fdfbf6;
+  --c-glow: #eee7d6;
+  --c-cloud: #fffdf8;
   --c-mist: #4f9fe6;
   --c-mist-opacity: 0.46;
   --c-mist-blend: normal;
-  --c-surface: #ffffff;
+  --c-surface: #fffdf8;
   --c-ink: #17293f;
-  --c-muted: #52657f;
+  --c-muted: #5b584e;
   --c-accent: #2f74d0;
   --c-accent-soft: #dbeafe;
   --c-on-accent: #ffffff;
-  --c-border: #d4e6fb;
+  --c-border: #e8e1d1;
 }
 
 /* Sunset (16–19) — near-white warm base; mist is DEEP CORAL-ORANGE golden hour. */
@@ -102,18 +104,20 @@
    comes from twinkling stars (see .night-sky). Surfaces are elevated (lighter
    than the base) so cards/bubbles read as raised, not sunken. */
 [data-phase="night"] {
-  --c-bg-1: #3b4b67;
-  --c-bg-2: #33425c;
-  --c-glow: #4a5c7b;
-  --c-cloud: #4a5b79;
+  /* Nudged from blue-grey toward a warmer indigo-charcoal; the golden accent +
+     stars carry the warmth. */
+  --c-bg-1: #40415a;
+  --c-bg-2: #383950;
+  --c-glow: #4d4d68;
+  --c-cloud: #4c4c63;
   --c-mist: #8ea6c9;
-  --c-surface: #46576f;
+  --c-surface: #4a4b62;
   --c-ink: #eef2f9;
   --c-muted: #d4dce8;
   --c-accent: #ffca92;
-  --c-accent-soft: #3c4f6d;
+  --c-accent-soft: #47435c;
   --c-on-accent: #10233d;
-  --c-border: #5c6d8a;
+  --c-border: #5e5c78;
 }
 
 /* Smooth, unnoticeable transition when the phase changes. */
@@ -460,6 +464,119 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .logo-float {
     animation: logo-float 5.5s ease-in-out infinite;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WARM-PREMIUM HERO — atmosphere, grain, card-lift, entrance.
+   (Warm-token nudge is folded into the phase blocks above.) The hero replaces
+   the old WebGL dither "fog" with a CSS/SVG warm atmosphere: a soft 3-stop
+   mesh + a gentle "sun through cloud" bloom, dressed with a grain film.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Grain overlay ───────────────────────────────────────────────────────
+   A subtle fractal-noise film over any atmosphere. This is the single
+   highest-leverage "warm, not sterile" move — it stops a smooth gradient
+   reading as flat digital. Pure inline SVG (no dependency, no request). */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  opacity: 0.16;
+  mix-blend-mode: soft-light;
+}
+[data-phase="night"] .grain::after {
+  opacity: 0.1;
+  mix-blend-mode: overlay;
+}
+
+/* ── Premium card-lift ───────────────────────────────────────────────────
+   A warmer, deeper, two-layer float for the hero product card — reads as
+   resting on air. Warmer shadow tint than --shadow-float (less blue). */
+.card-lift {
+  box-shadow:
+    0 2px 6px rgba(40, 30, 20, 0.06),
+    0 28px 60px -12px rgba(40, 30, 20, 0.28);
+}
+[data-phase="night"] .card-lift {
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.25),
+    0 28px 60px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Atmosphere base ─────────────────────────────────────────────────────
+   Container for a hero background treatment. Layers sit behind content
+   (content is z-10 in the hero). */
+.atmo {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ── Hero atmosphere ─────────────────────────────────────────────────────
+   The blend: a soft 3-stop radial mesh (calm layered light) PLUS a gentle
+   "sun through cloud" bloom up top-right — the dialed-back cinematic note.
+   The `::before` is the mesh+bloom; the `.bloom` child is the focal glow so it
+   can drift independently. All colour comes from the phase tokens. */
+.atmo-hero::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(38% 52% at 22% 24%, color-mix(in oklab, var(--c-glow) 90%, transparent), transparent 70%),
+    radial-gradient(44% 48% at 84% 16%, color-mix(in oklab, var(--c-mist) 40%, transparent), transparent 72%),
+    radial-gradient(60% 62% at 62% 96%, color-mix(in oklab, var(--c-accent-soft) 76%, transparent), transparent 76%);
+  filter: blur(24px);
+}
+.atmo-hero .bloom {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    20% 22% at 78% 8%,
+    color-mix(in oklab, var(--c-glow) 94%, white 16%),
+    transparent 66%
+  );
+}
+
+/* Slow drift for the atmosphere layers (motion-welcome only). */
+@keyframes atmo-drift {
+  from {
+    transform: translate3d(-1.5%, 0, 0) scale(1.02);
+  }
+  to {
+    transform: translate3d(1.5%, 0, 0) scale(1.02);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .atmo-hero::before {
+    animation: atmo-drift 32s ease-in-out infinite alternate;
+  }
+  .atmo-hero .bloom {
+    animation: atmo-drift 40s ease-in-out infinite alternate-reverse;
+  }
+}
+
+/* ── Hero product-card entrance (float up on load) ───────────────────────
+   Base state is fully visible (robust if the animation never runs). */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-card-in {
+    animation: hero-card-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+@keyframes hero-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
