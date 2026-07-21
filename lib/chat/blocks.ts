@@ -15,8 +15,44 @@ import type {
   FlightsPayload,
   Lang,
   StayOfferView,
+  StaySortMode,
   StaysPayload,
 } from "@/components/chat/message-parts";
+
+/**
+ * Client-side stays re-sort (the chips above the card stack). Pure — never
+ * mutates. "fit" = delivered order (server smart sort) with the recommended
+ * card floated to the top; distance sorts by km (mock offers have only
+ * walking minutes, used as the tie-break so mock stacks still respond).
+ */
+export function sortStayOffers(
+  offers: StayOfferView[],
+  mode: StaySortMode,
+  recommendedId?: string,
+): StayOfferView[] {
+  const s = [...offers];
+  switch (mode) {
+    case "priceAsc":
+      return s.sort((a, b) => a.pricePerNight - b.pricePerNight);
+    case "priceDesc":
+      return s.sort((a, b) => b.pricePerNight - a.pricePerNight);
+    case "distance":
+      return s.sort(
+        (a, b) =>
+          (a.distanceKm ?? Number.POSITIVE_INFINITY) -
+            (b.distanceKm ?? Number.POSITIVE_INFINITY) ||
+          (a.distanceMinutes ?? Number.POSITIVE_INFINITY) -
+            (b.distanceMinutes ?? Number.POSITIVE_INFINITY),
+      );
+    case "fit":
+    default:
+      if (!recommendedId) return s;
+      return [
+        ...s.filter((o) => o.id === recommendedId),
+        ...s.filter((o) => o.id !== recommendedId),
+      ];
+  }
+}
 
 /**
  * Deterministic guard for the "space after sentence punctuation" writing rule
