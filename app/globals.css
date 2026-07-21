@@ -138,15 +138,7 @@ html {
   }
 }
 
-/* --ink is the last legacy token: it backs the mobile drawer scrim
-   (bg-ink/30). A neutral dark scrim is phase-independent by design. */
-:root {
-  --ink: #0f172a;
-}
-
 @theme inline {
-  --color-ink: var(--ink);
-
   /* Time-of-day role tokens exposed as Tailwind colors. */
   --color-c-bg-1: var(--c-bg-1);
   --color-c-bg-2: var(--c-bg-2);

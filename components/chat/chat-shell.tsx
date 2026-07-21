@@ -125,18 +125,22 @@ export default function ChatShell({
       {/* Desktop sidebar */}
       <TripSidebar {...sidebarProps} className="hidden md:flex" />
 
-      {/* Mobile drawer + scrim */}
+      {/* Mobile drawer + scrim — the scrim matches the detail modal's
+          phase-tinted treatment (one scrim language across the app). */}
       <div
         aria-hidden="true"
         onClick={() => setDrawerOpen(false)}
-        className={`fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm md:hidden ${
+        className={`fixed inset-0 z-40 backdrop-blur-sm transition-opacity md:hidden ${
           drawerOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
+        style={{
+          background: "color-mix(in srgb, var(--c-bg-1) 60%, rgba(2,8,23,0.35))",
+        }}
       />
       <TripSidebar
         {...sidebarProps}
         onNavigate={() => setDrawerOpen(false)}
-        className="fixed inset-y-0 start-0 z-50 flex shadow-xl md:hidden"
+        className="fixed inset-y-0 start-0 z-50 flex shadow-float md:hidden"
         style={{ transform: drawerOpen ? "translateX(0)" : "translateX(100%)" }}
       />
 

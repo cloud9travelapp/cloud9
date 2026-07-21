@@ -120,7 +120,7 @@ export function UserBubble({ content }: { content: string }) {
   return (
     <div
       dir="auto"
-      className="w-fit max-w-[82%] rounded-2xl bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-sm [unicode-bidi:plaintext]"
+      className="w-fit max-w-[82%] rounded-card bg-c-accent px-4 py-2.5 text-[15px] leading-relaxed text-c-on-accent shadow-rest [unicode-bidi:plaintext]"
     >
       <span className="whitespace-pre-wrap">{content}</span>
     </div>
@@ -474,7 +474,7 @@ export function FlightCard({
 
   return (
     <div
-      className={`rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+      className={`rounded-card border border-c-border bg-c-surface px-3 py-2.5 shadow-rest${
         expandable ? " cursor-pointer select-none" : ""
       }`}
       onClick={expandable ? () => setExpanded((e) => !e) : undefined}
@@ -746,9 +746,9 @@ export function StayCard({
   const L = LABELS[lang];
   return (
     <div
-      className={`rounded-xl border ${
+      className={`rounded-card border ${
         recommended ? "border-c-accent/50" : "border-c-border"
-      } bg-c-surface px-3 py-2.5 shadow-sm${
+      } bg-c-surface px-3 py-2.5 shadow-rest${
         onOpenDetail ? " cursor-pointer select-none" : ""
       }`}
       onClick={onOpenDetail}>
@@ -946,7 +946,7 @@ export function DateCalendar({
     <div
       dir={lang === "he" ? "rtl" : "ltr"}
       aria-hidden={interactive ? undefined : true}
-      className={`w-full max-w-[340px] rounded-xl border border-c-border bg-c-surface px-3 py-2.5 shadow-sm${
+      className={`w-full max-w-[340px] rounded-card border border-c-border bg-c-surface px-3 py-2.5 shadow-rest${
         interactive ? "" : " pointer-events-none"
       }`}
     >

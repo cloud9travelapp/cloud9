@@ -78,7 +78,7 @@ function FavoriteRow({
     </>
   );
   return (
-    <div className="group flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-c-accent-soft/60">
+    <div className="group flex items-center gap-2 rounded-card px-2 py-1.5 transition-colors hover:bg-c-accent-soft/60">
       {onOpen ? (
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-start">
           {body}
@@ -189,7 +189,7 @@ export default function TripSidebar({
                 // with an inline input. Enter/blur saves, Escape cancels.
                 return (
                   <li key={t.id}>
-                    <div className="flex items-center gap-2.5 rounded-xl bg-c-accent-soft px-3 py-2.5 ring-1 ring-inset ring-c-accent/25">
+                    <div className="flex items-center gap-2.5 rounded-card bg-c-accent-soft px-3 py-2.5 ring-1 ring-inset ring-c-accent/25">
                       <span
                         aria-hidden="true"
                         className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent"
@@ -224,7 +224,7 @@ export default function TripSidebar({
                     href={`/chat?trip=${t.id}`}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    className={`group flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors ${
+                    className={`group flex items-center gap-2.5 rounded-card px-3 py-2.5 transition-colors ${
                       active
                         ? "bg-c-accent-soft ring-1 ring-inset ring-c-accent/25"
                         : "hover:bg-c-accent-soft/60"
@@ -297,7 +297,7 @@ export default function TripSidebar({
             type="button"
             aria-expanded={favoritesOpen}
             onClick={() => setFavoritesOpen((o) => !o)}
-            className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-c-accent-soft/60"
+            className="flex w-full items-center gap-2 rounded-card px-2 py-1.5 transition-colors hover:bg-c-accent-soft/60"
           >
             <svg
               viewBox="0 0 24 24"

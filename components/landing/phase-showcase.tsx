@@ -18,7 +18,7 @@ export default function PhaseShowcase() {
              so each phase reads clearly (sunrise yellow-gold vs sunset coral) */}
           <span
             data-phase={p.id}
-            className="relative block h-24 overflow-hidden rounded-2xl border border-c-border shadow-sm"
+            className="relative block h-24 overflow-hidden rounded-card border border-c-border shadow-rest"
             style={{
               background:
                 "linear-gradient(150deg, var(--c-bg-1) 0%, var(--c-bg-2) 32%, var(--c-mist) 118%)",

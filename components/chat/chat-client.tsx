@@ -600,7 +600,7 @@ export default function ChatClient({
             onKeyDown={onKeyDown}
             rows={1}
             placeholder="Message the Concierge…"
-            className="max-h-40 flex-1 resize-none rounded-3xl border border-c-border bg-c-surface px-4 py-3 text-[15px] text-c-ink outline-none placeholder:text-c-muted focus:border-c-accent focus:ring-2 focus:ring-c-accent/25"
+            className="max-h-40 flex-1 resize-none rounded-panel border border-c-border bg-c-surface px-4 py-3 text-[15px] text-c-ink outline-none placeholder:text-c-muted focus:border-c-accent focus:ring-2 focus:ring-c-accent/25"
           />
           <button
             type="button"

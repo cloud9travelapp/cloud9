@@ -101,7 +101,7 @@ export default function ChatDemo() {
     <div
       ref={ref}
       dir="ltr"
-      className="mx-auto w-full max-w-md overflow-hidden rounded-3xl border border-c-border bg-c-surface/80 shadow-xl backdrop-blur"
+      className="mx-auto w-full max-w-md overflow-hidden rounded-panel border border-c-border bg-c-surface/80 shadow-float backdrop-blur"
     >
       {/* faux header */}
       <div className="flex items-center gap-2.5 border-b border-c-border px-4 py-3">

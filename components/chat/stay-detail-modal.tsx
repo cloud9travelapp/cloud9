@@ -163,7 +163,7 @@ function SnapGallery({
             src={src}
             alt=""
             loading="lazy"
-            className={`flex-none snap-center rounded-2xl object-cover ${imgClass}`}
+            className={`flex-none snap-center rounded-card object-cover ${imgClass}`}
           />
         ))}
       </div>
@@ -261,7 +261,7 @@ export function StayDetailModal({
       {/* panel */}
       <div
         dir={lang === "he" ? "rtl" : "ltr"}
-        className="modal-enter scroll-soft relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-c-border bg-c-surface shadow-2xl"
+        className="modal-enter scroll-soft relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-panel border border-c-border bg-c-surface shadow-float"
       >
         {/* header */}
         <div className="sticky top-0 z-[1] flex items-start justify-between gap-3 border-b border-c-border bg-c-surface/95 px-5 py-4 backdrop-blur">
@@ -345,7 +345,7 @@ export function StayDetailModal({
                             src={room.images[0]}
                             alt={room.name}
                             loading="lazy"
-                            className="h-14 w-20 flex-none rounded-lg object-cover"
+                            className="h-14 w-20 flex-none rounded-inset object-cover"
                           />
                         ) : null}
                         <div dir="auto" className="min-w-0 text-sm font-semibold text-c-ink">
@@ -362,7 +362,7 @@ export function StayDetailModal({
                     );
                     const open = expandedRoom === room.code;
                     return (
-                    <div key={room.code} className="rounded-xl border border-c-border px-3 py-2.5">
+                    <div key={room.code} className="rounded-card border border-c-border px-3 py-2.5">
                       {room.images?.length ? (
                         /* tap the photo/name to open this room's mini-gallery */
                         <button
