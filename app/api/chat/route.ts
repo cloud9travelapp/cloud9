@@ -10,13 +10,14 @@ import { logDiag } from "@/lib/diag";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
 import {
+  peekStays,
   searchStays,
   searchStayByName,
   verifyStays,
   IS_MOCK_STAY_PROVIDER,
 } from "@/lib/stays/provider";
 import type { StayOffer, StayQuery } from "@/lib/stays/types";
-import { applyMinStars, sortOffersBy } from "@/lib/stays/present";
+import { applyMinStars, nextStayBatch, sortOffersBy } from "@/lib/stays/present";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -448,23 +449,42 @@ async function runStaySearch(
     const mock =
       IS_MOCK_STAY_PROVIDER ||
       (results.length > 0 && results.every((o) => o.id.startsWith("mock-")));
-    // Card cap hit → the client gets a "show more" ticket into the cached
-    // pool (the endpoint honestly reports exhaustion if 8 was everything).
-    const moreKey =
-      offers.length >= 8
-        ? JSON.stringify({
-            destination: query.destination,
-            latitude: query.latitude,
-            longitude: query.longitude,
-            checkIn: query.checkIn,
-            checkOut: query.checkOut,
-            guests: query.guests,
-            rooms: query.rooms,
-            ...(query.budgetLevel ? { budgetLevel: query.budgetLevel } : {}),
-            ...(sortBy ? { sortBy } : {}),
-            ...(q.minStars === 5 ? { minStars: 5 } : {}),
-          })
-        : undefined;
+    // "Show more" ticket — only when the cached pool actually holds at least
+    // one more matching offer beyond the shown cards (probed cache-only and
+    // best-effort; the distance tier usually shows 5-6 cards, so a shown-count
+    // heuristic would almost never fire). The button appears only when tapping
+    // it can deliver.
+    let moreKey: string | undefined;
+    if (offers.length > 0) {
+      try {
+        const pool = await peekStays(query);
+        if (pool) {
+          const probe = nextStayBatch(pool, {
+            budgetLevel: query.budgetLevel,
+            sortBy,
+            minStars: q.minStars === 5 ? 5 : undefined,
+            excludeIds: offers.map((o) => o.id),
+            batch: 1,
+          });
+          if (probe.offers.length > 0) {
+            moreKey = JSON.stringify({
+              destination: query.destination,
+              latitude: query.latitude,
+              longitude: query.longitude,
+              checkIn: query.checkIn,
+              checkOut: query.checkOut,
+              guests: query.guests,
+              rooms: query.rooms,
+              ...(query.budgetLevel ? { budgetLevel: query.budgetLevel } : {}),
+              ...(sortBy ? { sortBy } : {}),
+              ...(q.minStars === 5 ? { minStars: 5 } : {}),
+            });
+          }
+        }
+      } catch {
+        /* best-effort — no button beats a wrong button */
+      }
+    }
     return {
       result: JSON.stringify({
         mock,
