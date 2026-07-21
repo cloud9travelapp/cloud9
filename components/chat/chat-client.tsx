@@ -606,7 +606,7 @@ export default function ChatClient({
             type="button"
             onClick={() => void send()}
             disabled={isStreaming || !input.trim()}
-            className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-rest transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Send message"
           >
             <svg

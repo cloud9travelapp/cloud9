@@ -153,7 +153,7 @@ export default function TripSidebar({
         <Link
           href="/chat"
           onClick={onNavigate}
-          className="flex items-center justify-center gap-2 rounded-2xl bg-c-accent px-4 py-3 text-sm font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90"
+          className="flex items-center justify-center gap-2 rounded-full bg-c-accent px-4 py-3 text-sm font-semibold text-c-on-accent shadow-rest transition-opacity hover:opacity-90"
         >
           <svg
             viewBox="0 0 24 24"

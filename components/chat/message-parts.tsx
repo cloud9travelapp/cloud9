@@ -635,7 +635,7 @@ export function ShowMoreButton({
       type="button"
       disabled={state === "loading"}
       onClick={onClick}
-      className="self-center rounded-full border border-c-border bg-c-surface px-4 py-1.5 text-xs text-c-accent transition-colors hover:bg-c-accent-soft disabled:opacity-50"
+      className="self-center rounded-full border border-c-border bg-c-surface px-3 py-1.5 text-xs text-c-accent transition-colors hover:bg-c-accent-soft disabled:opacity-50"
     >
       {L.showMore}
     </button>
@@ -708,7 +708,7 @@ export function StaySortChips({
           type="button"
           onClick={() => onChange(m)}
           aria-pressed={m === active}
-          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
             m === active
               ? "border-c-accent bg-c-accent text-c-on-accent"
               : "border-c-border bg-c-surface text-c-muted hover:border-c-accent/50 hover:text-c-ink"

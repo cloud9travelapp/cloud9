@@ -196,7 +196,7 @@ export default async function Home() {
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/chat"
-              className="inline-flex items-center gap-2 rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-rest transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
             >
               Start planning
               <span aria-hidden="true">→</span>
@@ -312,7 +312,7 @@ export default async function Home() {
         <div className="mt-9">
           <Link
             href="/chat"
-            className="inline-flex items-center gap-2 rounded-full bg-c-accent px-9 py-4 text-lg font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-2 rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-rest transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-c-accent/40 focus-visible:ring-offset-2"
           >
             Start planning
             <span aria-hidden="true">→</span>

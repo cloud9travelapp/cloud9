@@ -21,7 +21,7 @@ export default async function ChatPage({
   if (!session?.user?.googleId) {
     return (
       <div dir="rtl" className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-sm">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-rest">
           <CloudMarkClassic className="h-7 w-7" />
         </span>
         <h1 className="font-display mt-6 text-3xl font-extrabold tracking-tight text-c-ink">
@@ -40,7 +40,7 @@ export default async function ChatPage({
         >
           <button
             type="submit"
-            className="rounded-full bg-c-accent px-8 py-3.5 text-base font-semibold text-c-on-accent shadow-sm transition-opacity hover:opacity-90"
+            className="rounded-full bg-c-accent px-7 py-3.5 text-base font-semibold text-c-on-accent shadow-rest transition-opacity hover:opacity-90"
           >
             Sign in with Google
           </button>
