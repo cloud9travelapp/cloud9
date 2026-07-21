@@ -14,6 +14,10 @@ const PHOTO_BASE = "https://photos.hotelbeds.com/giata/bigger/";
 const MAX_IMAGES = 10;
 const MAX_AMENITIES = 10;
 const FACILITIES_CACHE_CODE = "__facilities__";
+const DESTINATIONS_CACHE_CODE = "__destinations__";
+const HOTEL_INDEX_CACHE_PREFIX = "__hotelindex__"; // + destinationCode
+const CATALOG_PAGE = 1000;
+const MAX_CATALOG_PAGES = 5; // hard cap per catalog/index fetch (once ever, cached permanently)
 
 /** Mapped, compact content — this is what the cache stores and the modal and
  *  the get_hotel_details tool consume. */
@@ -150,6 +154,178 @@ export function mapHotelContent(
     // reviewScore/reviewCount intentionally absent unless review data shows
     // up in the raw response (see the field stash below) — display-when-present.
   };
+}
+
+// ── Hotel-by-name: destination catalog + per-destination name index ──────
+// Both are fetched ONCE ever (paged, hard-capped) and cached permanently in
+// hotel_content_cache under reserved codes — the fuzzy matching itself is
+// local and free. Used when the traveler asks for a specific property.
+
+export type NamedHotelEntry = { code: number; name: string };
+
+/** Normalize a hotel/destination name for matching: lowercase, diacritics
+ *  stripped, punctuation → spaces, "&" → "and", generic words dropped. */
+export function normalizeHotelName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9֐-׿]+/g, " ")
+    .split(/\s+/)
+    .filter((t) => t && !["hotel", "hotels", "the"].includes(t))
+    .join(" ");
+}
+
+function bigrams(s: string): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2));
+  return out;
+}
+
+/**
+ * Rank inventory entries against the requested name. Score = token coverage
+ * (how much of the QUERY appears in the candidate, 70%) + bigram Dice
+ * similarity (30%). Deterministic; returns strong matches only (all-or-most
+ * query tokens present), best first, capped — the availability call takes the
+ * top codes.
+ */
+export function matchHotelName(
+  requested: string,
+  candidates: NamedHotelEntry[],
+  max = 10,
+): Array<NamedHotelEntry & { score: number }> {
+  const q = normalizeHotelName(requested);
+  if (!q) return [];
+  const qTokens = q.split(" ");
+  const qBigrams = bigrams(q);
+  const scored: Array<NamedHotelEntry & { score: number }> = [];
+  for (const c of candidates) {
+    const n = normalizeHotelName(c.name);
+    if (!n) continue;
+    const nTokens = new Set(n.split(" "));
+    const covered = qTokens.filter((t) => nTokens.has(t)).length / qTokens.length;
+    if (covered < 0.75) continue; // most of what they asked for must be there
+    const nBigrams = bigrams(n);
+    let inter = 0;
+    for (const b of qBigrams) if (nBigrams.has(b)) inter++;
+    const dice = (2 * inter) / (qBigrams.size + nBigrams.size || 1);
+    const score = covered * 0.7 + dice * 0.3;
+    if (score >= 0.5) scored.push({ ...c, score });
+  }
+  return scored.sort((a, b) => b.score - a.score).slice(0, max);
+}
+
+type DestinationEntry = { code: string; name: string; countryCode?: string };
+
+/** Paged catalog fetch shared by destinations and per-destination hotel
+ *  lists. Stops on a short page or the hard page cap. */
+async function fetchPaged<T>(
+  urlFor: (from: number, to: number) => string,
+  pick: (data: unknown) => T[],
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let page = 0; page < MAX_CATALOG_PAGES; page++) {
+    const from = page * CATALOG_PAGE + 1;
+    const res = await fetch(urlFor(from, from + CATALOG_PAGE - 1), {
+      headers: hotelbedsHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Content catalog failed: HTTP ${res.status}`);
+    const batch = pick(await res.json());
+    all.push(...batch);
+    if (batch.length < CATALOG_PAGE) break;
+  }
+  return all;
+}
+
+/** Resolve a destination name ("Paris") to its Hotelbeds destination code
+ *  ("PAR") via the permanently-cached destinations catalog. Null when the
+ *  catalog can't resolve it (caller degrades honestly). */
+export async function getDestinationCode(
+  destinationName: string,
+): Promise<string | null> {
+  try {
+    let catalog = (await cacheGetContent(
+      "hotelbeds",
+      DESTINATIONS_CACHE_CODE,
+    )) as { destinations?: DestinationEntry[] } | null;
+    if (!catalog?.destinations) {
+      const destinations = await fetchPaged<DestinationEntry>(
+        (from, to) =>
+          `${HOTELBEDS_BASE_URL}/hotel-content-api/1.0/locations/destinations?fields=all&language=ENG&from=${from}&to=${to}`,
+        (data) =>
+          ((data as {
+            destinations?: Array<{
+              code?: string;
+              name?: { content?: string };
+              countryCode?: string;
+            }>;
+          }).destinations ?? [])
+            .filter((d) => d.code && d.name?.content)
+            .map((d) => ({
+              code: d.code!,
+              name: d.name!.content!,
+              countryCode: d.countryCode,
+            })),
+      );
+      if (!destinations.length) return null;
+      catalog = { destinations };
+      await cachePutContent("hotelbeds", DESTINATIONS_CACHE_CODE, catalog);
+    }
+    const want = normalizeHotelName(destinationName);
+    if (!want) return null;
+    const exact = catalog.destinations!.find(
+      (d) => normalizeHotelName(d.name) === want,
+    );
+    if (exact) return exact.code;
+    const partial = catalog.destinations!.find((d) => {
+      const n = normalizeHotelName(d.name);
+      return n.startsWith(want) || want.startsWith(n);
+    });
+    return partial?.code ?? null;
+  } catch (err) {
+    console.error("Destination catalog failed:", err);
+    await logDiag("content_api_error", {
+      stage: "destinations",
+      message: String(err).slice(0, 300),
+    });
+    return null;
+  }
+}
+
+/** All hotel codes+names for a destination, cached permanently — the local
+ *  matching corpus for hotel-by-name. Null on failure (degrade honestly). */
+export async function getHotelNameIndex(
+  destinationCode: string,
+): Promise<NamedHotelEntry[] | null> {
+  try {
+    const cacheCode = `${HOTEL_INDEX_CACHE_PREFIX}${destinationCode}`;
+    const cached = (await cacheGetContent("hotelbeds", cacheCode)) as {
+      hotels?: NamedHotelEntry[];
+    } | null;
+    if (cached?.hotels) return cached.hotels;
+    const hotels = await fetchPaged<NamedHotelEntry>(
+      (from, to) =>
+        `${HOTELBEDS_BASE_URL}/hotel-content-api/1.0/hotels?destinationCode=${encodeURIComponent(destinationCode)}&fields=name&language=ENG&from=${from}&to=${to}`,
+      (data) =>
+        ((data as {
+          hotels?: Array<{ code?: number; name?: { content?: string } }>;
+        }).hotels ?? [])
+          .filter((h) => typeof h.code === "number" && h.name?.content)
+          .map((h) => ({ code: h.code!, name: h.name!.content! })),
+    );
+    await cachePutContent("hotelbeds", cacheCode, { hotels });
+    return hotels;
+  } catch (err) {
+    console.error("Hotel name index failed:", err);
+    await logDiag("content_api_error", {
+      stage: "hotel_index",
+      destinationCode,
+      message: String(err).slice(0, 300),
+    });
+    return null;
+  }
 }
 
 /**
