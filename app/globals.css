@@ -433,11 +433,72 @@ body {
   display: none;
 }
 
-/* Hotel-detail modal — gentle float-in, static under reduced motion. */
+/* ═══ Motion tokens (transitions.dev scale) ══════════════════════════════
+   The MOTION vocabulary — durations / easings / scales / distances / blur.
+   Deliberately separate from the phase COLOR tokens: phase tokens own colour,
+   these own motion. Reference as var(--duration-*), var(--ease-*), etc. */
+:root {
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms; /* modal/dropdown close, text swap */
+  --duration-fast: 250ms; /* modal/dropdown open, card enter */
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: ease-in-out;
+  --ease-out: ease-out;
+  --ease-linear: linear;
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --scale-large: 0.96; /* modal open / close */
+  --scale-medium: 0.97;
+  --scale-small: 0.98;
+  --distance-base: 8px;
+  --distance-medium: 12px;
+  --blur-small: 2px;
+}
+
+/* Hotel-detail modal — symmetric float in/out, static under reduced motion.
+   Open scales up from --scale-large; close dips back down and fades (quicker
+   than the open, per the motion scale). */
 @keyframes modal-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.98);
+    transform: translateY(10px) scale(var(--scale-large));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes modal-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(var(--scale-large));
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .modal-enter {
+    animation: modal-in var(--duration-fast) var(--ease-smooth-out) both;
+  }
+  .modal-exit {
+    animation: modal-out var(--duration-quick) var(--ease-smooth-out) both;
+  }
+}
+
+/* ── Card enter stagger ──────────────────────────────────────────────────
+   Flight/stay card stacks reveal in sequence — each card rises + fades with a
+   per-index delay (set inline as animation-delay). One-shot on mount; a client
+   re-sort keeps the same keys, so it never replays. Base state stays visible
+   (reduced-motion + no-JS safe). */
+@keyframes card-stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--distance-base));
   }
   to {
     opacity: 1;
@@ -445,8 +506,8 @@ body {
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .modal-enter {
-    animation: modal-in 0.28s ease-out;
+  .stagger-in {
+    animation: card-stagger-in var(--duration-fast) var(--ease-smooth-out) both;
   }
 }
 

@@ -28,7 +28,7 @@ import {
   splitMore,
 } from "@/lib/chat/blocks";
 import { isFavorite, type TripFavorite } from "@/lib/favorites";
-import HeroDithering from "@/components/landing/hero-dithering";
+import HeroAtmosphere from "@/components/landing/hero/hero-atmosphere";
 
 // Starter prompts shown on the empty state (interface language: English).
 const INSPIRATION = [
@@ -179,18 +179,23 @@ function StayStack({
       {offers.length > 1 ? (
         <StaySortChips lang={stays.lang} active={sort} onChange={setSort} />
       ) : null}
-      {sorted.map((offer) => (
-        <StayCard
+      {sorted.map((offer, ci) => (
+        <div
           key={offer.id}
-          offer={offer}
-          mock={mock}
-          lang={stays.lang}
-          recommended={offer.id === recommendedId}
-          hearted={isHearted(offer.id)}
-          onToggleHeart={() => onToggleHeart(offer)}
-          onSelect={onSelect}
-          onOpenDetail={() => onOpenDetail(offer)}
-        />
+          className="stagger-in"
+          style={{ animationDelay: `calc(${ci} * var(--duration-stagger))` }}
+        >
+          <StayCard
+            offer={offer}
+            mock={mock}
+            lang={stays.lang}
+            recommended={offer.id === recommendedId}
+            hearted={isHearted(offer.id)}
+            onToggleHeart={() => onToggleHeart(offer)}
+            onSelect={onSelect}
+            onOpenDetail={() => onOpenDetail(offer)}
+          />
+        </div>
       ))}
       {moreKey ? (
         <ShowMoreButton
@@ -447,10 +452,13 @@ export default function ChatClient({
       </header>
 
       {/* Messages — the app-wide sky (SkyClouds + phase gradient) shows through.
-         On the empty state the living Dithering mist is present too, like the
-         landing hero. */}
-      <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 py-6">
-        {isEmpty ? <HeroDithering /> : null}
+         On the empty state the warm hero atmosphere is present too (same CSS
+         treatment as the landing hero), and the scroll chrome stays soft. */}
+      <div
+        ref={scrollRef}
+        className="scroll-soft relative flex-1 overflow-y-auto px-4 py-6"
+      >
+        {isEmpty ? <HeroAtmosphere /> : null}
         <div className="relative z-[1] mx-auto flex max-w-2xl flex-col gap-5">
           {isEmpty ? (
             <div className="mt-24 flex flex-col items-center text-center">
@@ -534,23 +542,28 @@ export default function ChatClient({
                       post outdated choices. */}
                   {flights && isLast && !isStreaming ? (
                     <div className="mt-2 flex w-full max-w-full md:max-w-[82%] flex-col gap-2">
-                      {flights.offers.map((offer) => (
-                        <FlightCard
+                      {flights.offers.map((offer, ci) => (
+                        <div
                           key={offer.id}
-                          offer={offer}
-                          mock={flights.mock}
-                          lang={flights.lang}
-                          hearted={isFavorite(favorites, offer.id)}
-                          onToggleHeart={() =>
-                            onToggleFavorite(
-                              currentTripId,
-                              "flight",
-                              offer,
-                              flights.lang,
-                            )
-                          }
-                          onSelect={(s) => void send(s)}
-                        />
+                          className="stagger-in"
+                          style={{ animationDelay: `calc(${ci} * var(--duration-stagger))` }}
+                        >
+                          <FlightCard
+                            offer={offer}
+                            mock={flights.mock}
+                            lang={flights.lang}
+                            hearted={isFavorite(favorites, offer.id)}
+                            onToggleHeart={() =>
+                              onToggleFavorite(
+                                currentTripId,
+                                "flight",
+                                offer,
+                                flights.lang,
+                              )
+                            }
+                            onSelect={(s) => void send(s)}
+                          />
+                        </div>
                       ))}
                     </div>
                   ) : null}

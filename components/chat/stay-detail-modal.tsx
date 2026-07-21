@@ -7,7 +7,7 @@
 // mini-cards show board variants as one inline choice; a room pick posts a
 // structured message through the same send flow as CardSelect.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room, RoomRate, StayDetail } from "@/lib/stays/types";
 import { amenityLabel, HeartButton, LoadingDots, type Lang } from "./message-parts";
 import { dmy } from "@/lib/chat/dates";
@@ -206,6 +206,26 @@ export function StayDetailModal({
   const [failed, setFailed] = useState(false);
   // Room code whose mini-gallery is open (tap the room's photo/name to toggle).
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
+  // Close plays a scale-down + fade (modal-exit) before the parent unmounts.
+  // All close affordances (X, scrim, Escape) route through requestClose.
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<number | null>(null);
+  const requestClose = useCallback(() => {
+    if (closing) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    // Keep in sync with --duration-quick (globals.css).
+    closeTimer.current = window.setTimeout(onClose, 150);
+  }, [closing, onClose]);
+  useEffect(
+    () => () => {
+      if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -224,7 +244,7 @@ export function StayDetailModal({
 
   // Escape closes; page scroll locks while open.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && requestClose();
     window.addEventListener("keydown", onKey);
     const prev = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
@@ -232,7 +252,7 @@ export function StayDetailModal({
       window.removeEventListener("keydown", onKey);
       document.documentElement.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [requestClose]);
 
   function pickRoom(room: Room, rate: RoomRate) {
     const price = `${money(rate.pricePerNight, detail?.currency)} ${L.perNight}`;
@@ -248,20 +268,22 @@ export function StayDetailModal({
       aria-modal="true"
       aria-label={hotelName}
     >
-      {/* phase-tinted scrim */}
+      {/* phase-tinted scrim — fades with the panel on close */}
       <button
         type="button"
         aria-label={L.close}
-        onClick={onClose}
+        onClick={requestClose}
         className="absolute inset-0 backdrop-blur-sm"
         style={{
           background: "color-mix(in srgb, var(--c-bg-1) 60%, rgba(2,8,23,0.35))",
+          opacity: closing ? 0 : 1,
+          transition: "opacity var(--duration-quick) var(--ease-smooth-out)",
         }}
       />
       {/* panel */}
       <div
         dir={lang === "he" ? "rtl" : "ltr"}
-        className="modal-enter scroll-soft relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-panel border border-c-border bg-c-surface shadow-float"
+        className={`${closing ? "modal-exit" : "modal-enter"} scroll-soft relative z-[1] max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-panel border border-c-border bg-c-surface shadow-float`}
       >
         {/* header */}
         <div className="sticky top-0 z-[1] flex items-start justify-between gap-3 border-b border-c-border bg-c-surface/95 px-5 py-4 backdrop-blur">
@@ -289,7 +311,7 @@ export function StayDetailModal({
                 label={hearted ? T[lang].unheart : T[lang].heart}
               />
             ) : null}
-            <CloudCloseButton label={L.close} onClose={onClose} />
+            <CloudCloseButton label={L.close} onClose={requestClose} />
           </div>
         </div>
 
