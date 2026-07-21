@@ -115,6 +115,70 @@ function CloudCloseButton({
   );
 }
 
+/**
+ * The locked gallery pattern (snap scroll, hidden scrollbar, dots below with
+ * the active dot elongating), extracted so the hotel gallery and the per-room
+ * mini-gallery can't drift. Dots render only when there's something to snap.
+ */
+function SnapGallery({
+  images,
+  imgClass,
+  slidePx,
+  bleedClass = "-mx-5",
+  padClass = "px-5",
+}: {
+  images: string[];
+  imgClass: string;
+  /** Slide width + gap in px — drives the active-dot scroll math. */
+  slidePx: number;
+  bleedClass?: string;
+  padClass?: string;
+}) {
+  const [active, setActive] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div className={`relative ${bleedClass}`}>
+      <div
+        ref={ref}
+        onScroll={() => {
+          const el = ref.current;
+          if (!el) return;
+          setActive(
+            Math.min(
+              images.length - 1,
+              Math.round(Math.abs(el.scrollLeft) / slidePx),
+            ),
+          );
+        }}
+        className={`scroll-hide flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 ${padClass}`}
+      >
+        {images.map((src) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={src}
+            src={src}
+            alt=""
+            loading="lazy"
+            className={`flex-none snap-center rounded-2xl object-cover ${imgClass}`}
+          />
+        ))}
+      </div>
+      {images.length > 1 ? (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {images.map((_, i) => (
+            <span
+              key={i}
+              className={`h-1.5 rounded-full transition-all ${
+                i === active ? "w-4 bg-c-accent" : "w-1.5 bg-c-border"
+              }`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function StayDetailModal({
   hotelId,
   hotelName,
@@ -131,8 +195,8 @@ export function StayDetailModal({
   const L = T[lang];
   const [detail, setDetail] = useState<StayDetail | null>(null);
   const [failed, setFailed] = useState(false);
-  const [activeImage, setActiveImage] = useState(0);
-  const galleryRef = useRef<HTMLDivElement>(null);
+  // Room code whose mini-gallery is open (tap the room's photo/name to toggle).
+  const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -222,44 +286,7 @@ export function StayDetailModal({
                   scrollbar hidden (the peeking next photo IS the affordance),
                   nav = edge fades or snap dots (variant under review) */}
               {detail.images.length > 0 ? (
-                <div className="relative -mx-5">
-                  <div
-                    ref={galleryRef}
-                    onScroll={() => {
-                      const el = galleryRef.current;
-                      if (!el) return;
-                      setActiveImage(
-                        Math.min(
-                          detail.images.length - 1,
-                          Math.round(Math.abs(el.scrollLeft) / 264),
-                        ),
-                      );
-                    }}
-                    className="scroll-hide flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-1"
-                  >
-                    {detail.images.map((src) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={src}
-                        src={src}
-                        alt=""
-                        loading="lazy"
-                        className="h-44 w-64 flex-none snap-center rounded-2xl object-cover"
-                      />
-                    ))}
-                  </div>
-                  {/* snap dots (Max's pick): active dot elongates in accent */}
-                  <div className="mt-2 flex justify-center gap-1.5">
-                    {detail.images.map((_, i) => (
-                      <span
-                        key={i}
-                        className={`h-1.5 rounded-full transition-all ${
-                          i === activeImage ? "w-4 bg-c-accent" : "w-1.5 bg-c-border"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <SnapGallery images={detail.images} imgClass="h-44 w-64" slidePx={264} />
               ) : null}
 
               {detail.description ? (
@@ -289,9 +316,9 @@ export function StayDetailModal({
               ) : null}
               {detail.rooms && detail.rooms.length > 0 ? (
                 <div className="mt-2 flex flex-col gap-2">
-                  {detail.rooms.map((room) => (
-                    <div key={room.code} className="rounded-xl border border-c-border px-3 py-2.5">
-                      <div className="flex items-start gap-2.5">
+                  {detail.rooms.map((room) => {
+                    const header = (
+                      <>
                         {/* room photo when the content carries one — absent
                             rooms render exactly as before (honest fallback) */}
                         {room.images?.[0] ? (
@@ -313,7 +340,35 @@ export function StayDetailModal({
                             </div>
                           ) : null}
                         </div>
-                      </div>
+                      </>
+                    );
+                    const open = expandedRoom === room.code;
+                    return (
+                    <div key={room.code} className="rounded-xl border border-c-border px-3 py-2.5">
+                      {room.images?.length ? (
+                        /* tap the photo/name to open this room's mini-gallery */
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => setExpandedRoom(open ? null : room.code)}
+                          className="flex w-full items-start gap-2.5 text-start"
+                        >
+                          {header}
+                        </button>
+                      ) : (
+                        <div className="flex items-start gap-2.5">{header}</div>
+                      )}
+                      {open && room.images?.length ? (
+                        <div className="mt-2">
+                          <SnapGallery
+                            images={room.images}
+                            imgClass="h-32 w-48"
+                            slidePx={200}
+                            bleedClass="-mx-3"
+                            padClass="px-3"
+                          />
+                        </div>
+                      ) : null}
                       <div dir="auto" className="mt-2 flex flex-wrap gap-1.5">
                         {room.rates.map((rate) => (
                           <button
@@ -331,7 +386,8 @@ export function StayDetailModal({
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p dir="auto" className="mt-2 text-xs text-c-muted">{L.noRooms}</p>
