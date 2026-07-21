@@ -564,8 +564,9 @@ export async function POST(request: Request) {
   let trip: { id: string; name: string };
   let history: ChatRow[];
   let tripPrefs: string[] = [];
+  let heartedLine = "";
   if (rawTripId) {
-    const [tripRes, historyRes, prefsRes] = await Promise.all([
+    const [tripRes, historyRes, prefsRes, heartsRes] = await Promise.all([
       admin
         .from("trips")
         .select("id, name")
@@ -580,6 +581,15 @@ export async function POST(request: Request) {
         .limit(40),
       // Best-effort: errors (e.g. column not migrated yet) yield [].
       admin.from("trips").select("preferences").eq("id", rawTripId).single(),
+      // Hearted hotels — compact taste summary for the dynamic tail.
+      // Best-effort: table not migrated → no line.
+      admin
+        .from("trip_favorites")
+        .select("item")
+        .eq("trip_id", rawTripId)
+        .eq("item_type", "stay")
+        .order("created_at", { ascending: false })
+        .limit(12),
     ]);
     if (!tripRes.data) {
       await logDiag("chat_request_error", {
@@ -596,6 +606,21 @@ export async function POST(request: Request) {
     tripPrefs = Array.isArray(rawPrefs)
       ? rawPrefs.filter((p): p is string => typeof p === "string")
       : [];
+    const hearted = ((heartsRes.data ?? []) as Array<{ item: StayOffer }>).map(
+      (r) => r.item,
+    );
+    if (hearted.length) {
+      const parts = hearted.map((o) =>
+        [
+          o.name,
+          `${o.stars}★`,
+          o.type,
+          ...(o.amenities?.length ? [o.amenities.slice(0, 3).join("/")] : []),
+          `${o.pricePerNight} ${o.currency}/n`,
+        ].join(", "),
+      );
+      heartedLine = `This trip's hearted hotels (deliberate saves — their strongest taste signal), newest first: ${parts.join(" · ")} (${hearted.length} total).\n\n`;
+    }
   } else {
     const { data, error } = await admin
       .from("trips")
@@ -758,6 +783,7 @@ FAVORITES REVIEW (they tapped the 🤍 pill, or asked about their hearted hotels
 Second thoughts about a picked offer (any phrasing — "אני מתחרט", "לא בטוח לגבי המלון", "show me other options"): that choice REOPENS — the old selection is replaced, not still standing, and later summaries never mention the abandoned offer as if it holds. Don't just re-show the same list, and don't read regret as quitting the planning. FIRST ask ONE sharp clarifying question with options carrying real dimensions, folding the AREA SCOPE into the same options (e.g. "המחיר" / "המיקום — לנסות אזור אחר" / "משהו אחר") — still one question. If their answer doesn't touch area (price, vibe), re-search the SAME area and say so in passing ("נשארתי באותו אזור"). THEN search again with the refined preference and present fresh cards. What you learn is a STANDING preference for the rest of this trip ("wants a pool", "closer to the beach", "cheaper") — apply it to every later search without being asked again. Their screen no longer shows old cards: if they ask what the options were ("מה היו האופציות?"), run the search again and present cards — never recite remembered offers in text.
 
 Preferences — ask, don't assume: LISTENING and ASSUMING are different things. What they explicitly SAY in their message is an ANSWER — use it without re-asking (and record it); re-asking a question their words already answered is friction, not diligence. What you INFER from indirect signals (a single choice, tone, what they didn't say) is an ASSUMPTION — NEVER act on one. When a preference seems likely but wasn't stated, ask ONE clarifying question with options. Only what they explicitly state or confirm counts as known. A known preference is the STARTING POINT OF A QUESTION, never a silent filter: "בטיולים קודמים העדפת מלונות קטנים — גם הפעם?" — they confirm or change it, and their answer wins. This applies doubly to anything carried across trips.
+Hearts are the STRONGEST taste signal — above regret-flow learnings, above phrasing; when signals conflict, hearts win. A heart is a deliberate save, so USE them (this trip's hearted hotels, when any, are listed at the end of these instructions): when your best-fit pick matches recurring hearted traits, open the best-fit sentence with "בהתאם למה שאהבת — " — this framing is MANDATORY whenever hearts influenced the pick (transparency is the license to use them; a silent hearts-based filter is forbidden, and non-matching offers are never excluded). Patterns need permission to travel: when a clear pattern spans 3+ hearts (small boutique, pool, near the water), you may ask ONE confirm question — "שמתי לב שאתה נמשך למלונות בוטיק קטנים — לשמור כהעדפה קבועה?" — and ONLY a yes gets remember_preference scope stable. Hearts alone NEVER auto-write a stable preference: the pattern is YOUR inference on top of their explicit acts, and the ask-don't-assume law owns everything that crosses trips.
 Recording: when they explicitly state or confirm a preference, save it with the remember_preference tool — silently: no announcement, and NO text of any kind alongside the tool call itself (your user-facing reply comes after the tool result). scope "stable" ONLY for person-level truths stated as general ("אני תמיד...", "אני שונא מלונות ענקיים") — these follow the traveler to future trips and appear in your profile line. scope "trip" for this trip's context (budget level, central vs quiet this time, resort mood) and for regret-flow learnings, unless they say it's general. When unsure — "trip". Never record an inference. This trip's stated preferences, when any, appear at the end of these instructions.
 
 Context across the conversation: remember what they tell you (dates, budget, origin, travellers) and reuse it — don't re-ask what you already know. BUT when they switch the destination (or another major parameter) mid-conversation, briefly CONFIRM the carried-over details before searching, with quick-reply options — e.g. "Rhodes — same dates (Aug 10-15) and budget?" with options ["Yes", "Change"] (in this turn's reply language). Never silently reuse the old dates or budget for a new destination.
@@ -830,7 +856,7 @@ Offers OWN their message: a message that presents search results is your one sho
   // the static block's cacheability.
   const systemDynamic = `THIS TURN'S REPLY LANGUAGE: ${langDirective}. This is already decided from their latest message — do NOT re-decide it from the conversation, from your own earlier replies, or from tool results (tool results arrive as English JSON; that changes nothing). EVERY word you write this turn is in that language: the reply itself, any brief note before a tool call (e.g. "רגע, בודק אפשרויות..." when the turn is Hebrew — never "Let me check flights...", and never scratch narration in any other language: pre-tool text is visible conversation, not thought), the summary after a tool result, and every string inside a block (the "question", every option, every label). One message is ONE language from its first word to its last — commit to the language before you write the first word and never switch mid-message.
 
-${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n\n` : ""}${
+${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n\n` : ""}${heartedLine}${
     isFirstMessage
       ? "First message: a brief, professional greeting as the Cloud9 Concierge, then ask where they'd like to go. Nothing more."
       : "Returning traveler: a short, courteous greeting by name, draw on what you know of their preferences, and skip the introductions."
