@@ -58,6 +58,29 @@ export type StaysPayload = {
   recommendedId?: string;
 };
 
+// ── Attractions (agent #3) ───────────────────────────────────────────────
+export type AttractionOfferView = {
+  id: string;
+  name: string;
+  category: string; // neutral key, localized in the UI
+  area?: string;
+  durationMinutes?: number;
+  fromPrice: number; // per-person "from" price
+  currency: string;
+  distanceKm?: number;
+  rating?: number; // DISPLAY-WHEN-PRESENT only (never depended on)
+  summary?: string;
+};
+/** Client-side re-sort modes for an attractions card stack. "fit" = the
+ *  delivered order with the recommended card floated first. */
+export type AttractionSortMode = "fit" | "priceAsc" | "priceDesc" | "distance";
+export type AttractionsPayload = {
+  mock: boolean;
+  lang: Lang;
+  offers: AttractionOfferView[];
+  recommendedId?: string;
+};
+
 export type DateMode = "single" | "range";
 export type DatesPayload = {
   lang: Lang;
@@ -920,6 +943,282 @@ export function StayCard({
               `${L.selected}: ${offer.name}, ${offer.area}${
                 offer.stars > 0 ? `, ${L.stars(offer.stars)}` : ""
               }, ${money(offer.pricePerNight, offer.currency)} ${L.perNight}`,
+            )
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ── Attractions card (agent #3) ──────────────────────────────────────────
+const ATTRACTION_CATEGORY_LABELS: Record<Lang, Record<string, string>> = {
+  he: {
+    tours: "סיורים",
+    museums: "מוזיאונים",
+    outdoors: "טבע וטיולים",
+    food: "אוכל ושתייה",
+    nightlife: "חיי לילה",
+    family: "משפחה",
+    water: "פעילויות מים",
+    culture: "תרבות",
+    adventure: "הרפתקאות",
+    wellness: "ספא ורוגע",
+  },
+  en: {
+    tours: "Tours",
+    museums: "Museums",
+    outdoors: "Outdoors",
+    food: "Food & drink",
+    nightlife: "Nightlife",
+    family: "Family",
+    water: "On the water",
+    culture: "Culture",
+    adventure: "Adventure",
+    wellness: "Wellness",
+  },
+};
+
+export function attractionCategoryLabel(lang: Lang, key: string): string {
+  return ATTRACTION_CATEGORY_LABELS[lang][key] ?? key;
+}
+
+const A_LABELS: Record<
+  Lang,
+  {
+    from: string;
+    perPerson: string;
+    select: string;
+    selected: string;
+    heart: string;
+    unheart: string;
+    mock: string;
+    myPick: string;
+    kmFromCenter: (km: number) => string;
+    sortAria: string;
+    sortLabel: Record<AttractionSortMode, string>;
+  }
+> = {
+  he: {
+    from: "החל מ־",
+    perPerson: "לאדם",
+    select: "בחירה",
+    selected: "בחרתי",
+    heart: "שמור למועדפים",
+    unheart: "הסר מהמועדפים",
+    mock: "נתוני דמה",
+    myPick: "ההמלצה שלי",
+    kmFromCenter: (km) => `${km} ק"מ מהמרכז`,
+    sortAria: "מיון אטרקציות",
+    sortLabel: { fit: "הכי מתאים לי", priceAsc: "זול→יקר", priceDesc: "יקר→זול", distance: "קרוב למרכז" },
+  },
+  en: {
+    from: "from",
+    perPerson: "per person",
+    select: "Select",
+    selected: "Selected",
+    heart: "Save to favorites",
+    unheart: "Remove from favorites",
+    mock: "Test data",
+    myPick: "My pick",
+    kmFromCenter: (km) => `${km} km from center`,
+    sortAria: "Sort attractions",
+    sortLabel: { fit: "Best fit", priceAsc: "Price ↑", priceDesc: "Price ↓", distance: "Near center" },
+  },
+};
+
+function durationLabel(mins: number): string {
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** Compact sort chips above an attractions card stack — client-side re-sort. */
+export function AttractionSortChips({
+  lang,
+  active,
+  onChange,
+}: {
+  lang: Lang;
+  active: AttractionSortMode;
+  onChange: (mode: AttractionSortMode) => void;
+}) {
+  const L = A_LABELS[lang];
+  const MODES: AttractionSortMode[] = ["fit", "priceAsc", "priceDesc", "distance"];
+  return (
+    <div dir="auto" role="group" aria-label={L.sortAria} className="flex flex-wrap gap-1.5">
+      {MODES.map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          aria-pressed={m === active}
+          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+            m === active
+              ? "border-c-accent bg-c-accent text-c-on-accent"
+              : "border-c-border bg-c-surface text-c-muted hover:border-c-accent/50 hover:text-c-ink"
+          }`}
+        >
+          {L.sortLabel[m]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function AttractionCard({
+  offer,
+  mock,
+  lang,
+  recommended,
+  hearted,
+  onToggleHeart,
+  onSelect,
+  onOpenDetail,
+}: {
+  offer: AttractionOfferView;
+  mock: boolean;
+  lang: Lang;
+  recommended?: boolean;
+  hearted?: boolean;
+  onToggleHeart?: () => void;
+  onSelect?: (choice: string) => void;
+  onOpenDetail?: () => void;
+}) {
+  const L = A_LABELS[lang];
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Lazy preview gallery — same pattern as StayCard: fetch images (content-only)
+  // when the card scrolls into view. null = unfetched, [] = none (text-only
+  // fallback). Real chat only (onOpenDetail present); skipped in the demo.
+  const [images, setImages] = useState<string[] | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  useEffect(() => {
+    if (!onOpenDetail) return;
+    const el = cardRef.current;
+    if (!el) return;
+    let fetched = false;
+    const load = () => {
+      if (fetched) return;
+      fetched = true;
+      fetch("/api/attractions/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attractionId: offer.id }),
+      })
+        .then((r) => (r.ok ? r.json() : { images: [] }))
+        .then((d: { images?: string[] }) => setImages(d.images ?? []))
+        .catch(() => setImages([]));
+    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          load();
+          io.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [offer.id, onOpenDetail]);
+
+  useEffect(() => {
+    if (images && images.length > 0) {
+      const raf = requestAnimationFrame(() => setGalleryOpen(true));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [images]);
+
+  return (
+    <div
+      ref={cardRef}
+      className={`rounded-card border ${
+        recommended ? "border-c-accent/50" : "border-c-border"
+      } bg-c-surface px-3 py-2.5 shadow-rest${onOpenDetail ? " cursor-pointer select-none" : ""}`}
+      onClick={onOpenDetail}
+    >
+      {images && images.length > 0 ? (
+        <div className={`card-gallery-reveal${galleryOpen ? " open" : ""}`}>
+          <div>
+            <div className="mb-2">
+              <SnapGallery
+                images={images}
+                imgClass="h-36 w-64"
+                slidePx={264}
+                bleedClass="-mx-3"
+                padClass="px-3"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {recommended ? (
+        <div dir="auto" className="mb-1.5">
+          <span className="rounded-full bg-c-accent px-2 py-0.5 text-[11px] font-semibold text-c-on-accent">
+            {L.myPick}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div dir="auto" className="truncate text-sm font-semibold text-c-ink">
+            {offer.name}
+          </div>
+          <div dir="auto" className="truncate text-xs text-c-muted">
+            {attractionCategoryLabel(lang, offer.category)}
+            {offer.area ? ` · ${offer.area}` : ""}
+          </div>
+        </div>
+        <div className="flex flex-none flex-col items-end">
+          {onToggleHeart ? (
+            <HeartButton
+              active={!!hearted}
+              onToggle={onToggleHeart}
+              label={hearted ? L.unheart : L.heart}
+              className="-me-1.5 -mt-1"
+            />
+          ) : null}
+          <div className="flex items-baseline gap-1">
+            <span className="text-[11px] text-c-muted">{L.from}</span>
+            <span dir="ltr" className="text-lg font-bold text-c-accent tabular-nums">
+              {money(offer.fromPrice, offer.currency)}
+            </span>
+          </div>
+          <div className="text-[11px] text-c-muted">{L.perPerson}</div>
+        </div>
+      </div>
+
+      {offer.durationMinutes || typeof offer.distanceKm === "number" || typeof offer.rating === "number" ? (
+        <div dir="auto" className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-c-muted">
+          {offer.durationMinutes ? (
+            <span dir="ltr" className="tabular-nums">{durationLabel(offer.durationMinutes)}</span>
+          ) : null}
+          {typeof offer.distanceKm === "number" ? (
+            <span className="truncate">{L.kmFromCenter(offer.distanceKm)}</span>
+          ) : null}
+          {typeof offer.rating === "number" ? (
+            <span className="text-c-accent">★ {offer.rating.toFixed(1)}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {offer.summary ? (
+        <p dir="auto" className="mt-1.5 text-xs leading-relaxed text-c-muted">
+          {offer.summary}
+        </p>
+      ) : null}
+
+      {mock ? <div dir="auto" className="mt-2 text-[11px] text-c-muted">{L.mock}</div> : null}
+
+      {onSelect ? (
+        <CardSelect
+          label={L.select}
+          onSelect={() =>
+            onSelect(
+              `${L.selected}: ${offer.name}${offer.area ? `, ${offer.area}` : ""}, ${L.from} ${money(offer.fromPrice, offer.currency)} ${L.perPerson}`,
             )
           }
         />

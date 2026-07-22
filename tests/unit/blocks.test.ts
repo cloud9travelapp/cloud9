@@ -213,9 +213,27 @@ describe("parseAssistantMessage (mutually exclusive, cards win ties)", () => {
       text: "בסדר גמור, נשאיר את הטיסות בצד.",
       flights: null,
       stays: null,
+      attractions: null,
       options: null,
       dates: null,
     });
+  });
+  it("attractions parse and win over options (cards win ties)", () => {
+    const msg =
+      'הנה כמה רעיונות:\n<<ATTRACTIONS>>\n' +
+      JSON.stringify({
+        mock: true,
+        lang: "he",
+        offers: [{ id: "mock-1", name: "Colosseum Tour", category: "tours", fromPrice: 45, currency: "EUR" }],
+        recommendedId: "mock-1",
+      }) +
+      '\n<<END>>\n<<OPTIONS>>\n{"options":["a","b"]}\n<<END>>';
+    const r = parseAssistantMessage(msg);
+    expect(r.attractions?.offers).toHaveLength(1);
+    expect(r.attractions?.recommendedId).toBe("mock-1");
+    expect(r.options).toBeNull();
+    expect(r.stays).toBeNull();
+    expect(r.text).toBe("הנה כמה רעיונות:");
   });
 });
 

@@ -10,6 +10,9 @@
 // insensitive), so cards still render even if the model formats a marker oddly.
 
 import type {
+  AttractionOfferView,
+  AttractionsPayload,
+  AttractionSortMode,
   DatesPayload,
   FlightOfferView,
   FlightsPayload,
@@ -43,6 +46,38 @@ export function sortStayOffers(
             (b.distanceKm ?? Number.POSITIVE_INFINITY) ||
           (a.distanceMinutes ?? Number.POSITIVE_INFINITY) -
             (b.distanceMinutes ?? Number.POSITIVE_INFINITY),
+      );
+    case "fit":
+    default:
+      if (!recommendedId) return s;
+      return [
+        ...s.filter((o) => o.id === recommendedId),
+        ...s.filter((o) => o.id !== recommendedId),
+      ];
+  }
+}
+
+/**
+ * Client-side attractions re-sort (chips above the stack). Pure. "fit" = the
+ * delivered order with the recommended card floated to the top; "distance"
+ * sorts by km from the searched point. Mirrors sortStayOffers.
+ */
+export function sortAttractionOffers(
+  offers: AttractionOfferView[],
+  mode: AttractionSortMode,
+  recommendedId?: string,
+): AttractionOfferView[] {
+  const s = [...offers];
+  switch (mode) {
+    case "priceAsc":
+      return s.sort((a, b) => a.fromPrice - b.fromPrice);
+    case "priceDesc":
+      return s.sort((a, b) => b.fromPrice - a.fromPrice);
+    case "distance":
+      return s.sort(
+        (a, b) =>
+          (a.distanceKm ?? Number.POSITIVE_INFINITY) -
+          (b.distanceKm ?? Number.POSITIVE_INFINITY),
       );
     case "fit":
     default:
@@ -209,6 +244,65 @@ export function splitStays(content: string): {
 }
 
 /**
+ * Mirror of splitStays for the <<ATTRACTIONS>> block. `lang` defaults to "en"
+ * unless exactly "he". Any failure degrades to plain text; the display text
+ * never shows raw markup. A `recommendedId` counts only when it names a SHOWN
+ * offer (never a wrong badge).
+ */
+export function splitAttractions(content: string): {
+  text: string;
+  attractions: AttractionsPayload | null;
+} {
+  const text = displayText(content);
+  const raw = blockRaw(content, "ATTRACTIONS");
+  if (raw === null) return { text, attractions: null };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    let mock = true;
+    let lang: Lang = "en";
+    let offersRaw: unknown;
+    let recommendedRaw: unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const obj = parsed as {
+        mock?: unknown;
+        lang?: unknown;
+        offers?: unknown;
+        recommendedId?: unknown;
+      };
+      offersRaw = obj.offers;
+      mock = obj.mock !== false; // label unless explicitly false
+      lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
+      recommendedRaw = obj.recommendedId;
+    } else if (Array.isArray(parsed)) {
+      offersRaw = parsed;
+    }
+    if (!Array.isArray(offersRaw)) return { text, attractions: null };
+    const offers = offersRaw.filter((o): o is AttractionOfferView => {
+      const x = o as Partial<AttractionOfferView>;
+      return (
+        !!x &&
+        typeof x.name === "string" &&
+        typeof x.category === "string" &&
+        typeof x.fromPrice === "number"
+      );
+    });
+    if (!offers.length) return { text, attractions: null };
+    const shown = offers.slice(0, 8);
+    const recommendedId =
+      typeof recommendedRaw === "string" &&
+      shown.some((o) => o.id === recommendedRaw)
+        ? recommendedRaw
+        : undefined;
+    return {
+      text,
+      attractions: { mock, lang, offers: shown, ...(recommendedId ? { recommendedId } : {}) },
+    };
+  } catch {
+    return { text, attractions: null };
+  }
+}
+
+/**
  * Mirror of splitOptions for the <<DATES>> block. Any valid JSON object yields
  * a calendar (mode defaults to "range", lang to "en"; DateCalendar itself
  * clamps min/max to the future). Any failure degrades to plain text.
@@ -282,10 +376,23 @@ export function collectShownStayIds(contents: string[]): string[] {
   return [...ids];
 }
 
+/** Every attraction id ever shown in this conversation (union across all
+ *  ATTRACTIONS blocks) — the show-more exclusion seed. Mirrors
+ *  collectShownStayIds. */
+export function collectShownAttractionIds(contents: string[]): string[] {
+  const ids = new Set<string>();
+  for (const c of contents) {
+    const { attractions } = splitAttractions(c);
+    if (attractions) for (const o of attractions.offers) ids.add(o.id);
+  }
+  return [...ids];
+}
+
 export type ParsedAssistantMessage = {
   text: string;
   flights: FlightsPayload | null;
   stays: StaysPayload | null;
+  attractions: AttractionsPayload | null;
   options: string[] | null;
   dates: DatesPayload | null;
 };
@@ -297,18 +404,15 @@ export type ParsedAssistantMessage = {
  * dropped — never the reverse.
  */
 export function parseAssistantMessage(content: string): ParsedAssistantMessage {
+  const base = { flights: null, stays: null, attractions: null, options: null, dates: null };
   const fl = splitFlights(content);
-  if (fl.flights) {
-    return { text: fl.text, flights: fl.flights, stays: null, options: null, dates: null };
-  }
+  if (fl.flights) return { ...base, text: fl.text, flights: fl.flights };
   const st = splitStays(content);
-  if (st.stays) {
-    return { text: st.text, flights: null, stays: st.stays, options: null, dates: null };
-  }
+  if (st.stays) return { ...base, text: st.text, stays: st.stays };
+  const at = splitAttractions(content);
+  if (at.attractions) return { ...base, text: at.text, attractions: at.attractions };
   const opt = splitOptions(content);
-  if (opt.options) {
-    return { text: opt.text, flights: null, stays: null, options: opt.options, dates: null };
-  }
+  if (opt.options) return { ...base, text: opt.text, options: opt.options };
   const dt = splitDates(content);
-  return { text: dt.text, flights: null, stays: null, options: null, dates: dt.dates };
+  return { ...base, text: dt.text, dates: dt.dates };
 }

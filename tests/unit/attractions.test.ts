@@ -5,6 +5,12 @@ import {
   nextAttractionBatch,
   sortOffersBy,
 } from "@/lib/attractions/present";
+import {
+  collectShownAttractionIds,
+  sortAttractionOffers,
+  splitAttractions,
+} from "@/lib/chat/blocks";
+import type { AttractionOfferView } from "@/components/chat/message-parts";
 import type { AttractionOffer, AttractionQuery } from "@/lib/attractions/types";
 
 const Q: AttractionQuery = {
@@ -73,5 +79,48 @@ describe("attraction present helpers", () => {
     });
     expect(batch.map((o) => o.id)).toEqual(["a", "d"]);
     expect(remaining).toBe(1);
+  });
+});
+
+describe("attractions block parsing", () => {
+  const block = (offers: Partial<AttractionOfferView>[], extra = {}) =>
+    "text\n<<ATTRACTIONS>>\n" +
+    JSON.stringify({ mock: true, lang: "en", offers, ...extra }) +
+    "\n<<END>>";
+
+  it("splitAttractions parses valid offers, caps 8, drops a bad recommendedId", () => {
+    const offers = Array.from({ length: 10 }, (_, i) => ({
+      id: `mock-${i}`,
+      name: `Act ${i}`,
+      category: "tours",
+      fromPrice: 20 + i,
+      currency: "EUR",
+    }));
+    const { text, attractions } = splitAttractions(block(offers, { recommendedId: "nope" }));
+    expect(text).toBe("text");
+    expect(attractions?.offers).toHaveLength(8);
+    expect(attractions?.recommendedId).toBeUndefined(); // not a shown id → dropped
+    expect(attractions?.mock).toBe(true);
+  });
+
+  it("rejects malformed offers and missing block", () => {
+    expect(splitAttractions("just text").attractions).toBeNull();
+    expect(splitAttractions(block([{ name: "no price", category: "tours" }])).attractions).toBeNull();
+  });
+
+  it("collectShownAttractionIds unions ids across blocks", () => {
+    const a = block([{ id: "mock-a", name: "A", category: "food", fromPrice: 10, currency: "EUR" }]);
+    const b = block([{ id: "mock-b", name: "B", category: "tours", fromPrice: 20, currency: "EUR" }]);
+    expect(collectShownAttractionIds([a, b, "plain"]).sort()).toEqual(["mock-a", "mock-b"]);
+  });
+
+  it("sortAttractionOffers floats the recommended card on fit, sorts by price", () => {
+    const v: AttractionOfferView[] = [
+      { id: "a", name: "A", category: "tours", fromPrice: 30, currency: "EUR", distanceKm: 5 },
+      { id: "b", name: "B", category: "food", fromPrice: 10, currency: "EUR", distanceKm: 1 },
+    ];
+    expect(sortAttractionOffers(v, "fit", "b").map((o) => o.id)).toEqual(["b", "a"]);
+    expect(sortAttractionOffers(v, "priceDesc").map((o) => o.id)).toEqual(["a", "b"]);
+    expect(sortAttractionOffers(v, "distance").map((o) => o.id)).toEqual(["b", "a"]);
   });
 });
