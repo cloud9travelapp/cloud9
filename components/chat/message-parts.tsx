@@ -4,8 +4,9 @@
 // landing's scripted demo, so the demo can never drift from the product.
 // View + local UI state only (e.g. a card's expand toggle) — no parsing.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CloudMarkClassic } from "@/components/brand/cloud-marks";
+import SnapGallery from "./snap-gallery";
 import { dmy, isoDay, nightsBetween } from "@/lib/chat/dates";
 
 export type FlightSegmentView = {
@@ -754,14 +755,78 @@ export function StayCard({
   onOpenDetail?: () => void;
 }) {
   const L = LABELS[lang];
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Lazy hotel preview gallery: images live only in the Content API, so fetch
+  // them (light images-only endpoint) when the card scrolls into view. null =
+  // not fetched yet, [] = none (card stays text-only — the honest fallback).
+  // Real chat only (onOpenDetail present); skipped in the scripted demo.
+  const [images, setImages] = useState<string[] | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  useEffect(() => {
+    if (!onOpenDetail) return;
+    const el = cardRef.current;
+    if (!el) return;
+    let fetched = false;
+    const load = () => {
+      if (fetched) return;
+      fetched = true;
+      fetch("/api/stays/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hotelId: offer.id }),
+      })
+        .then((r) => (r.ok ? r.json() : { images: [] }))
+        .then((d: { images?: string[] }) => setImages(d.images ?? []))
+        .catch(() => setImages([]));
+    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          load();
+          io.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // offer.id identifies the hotel; onOpenDetail presence gates real chat.
+  }, [offer.id, onOpenDetail]);
+
+  // Ease the gallery open (grid-rows) the frame after images arrive, so the
+  // card grows smoothly instead of snapping.
+  useEffect(() => {
+    if (images && images.length > 0) {
+      const raf = requestAnimationFrame(() => setGalleryOpen(true));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [images]);
+
   return (
     <div
+      ref={cardRef}
       className={`rounded-card border ${
         recommended ? "border-c-accent/50" : "border-c-border"
       } bg-c-surface px-3 py-2.5 shadow-rest${
         onOpenDetail ? " cursor-pointer select-none" : ""
       }`}
       onClick={onOpenDetail}>
+      {images && images.length > 0 ? (
+        <div className={`card-gallery-reveal${galleryOpen ? " open" : ""}`}>
+          <div>
+            <div className="mb-2">
+              <SnapGallery
+                images={images}
+                imgClass="h-36 w-64"
+                slidePx={264}
+                bleedClass="-mx-3"
+                padClass="px-3"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
       {recommended ? (
         <div dir="auto" className="mb-1.5">
           <span className="rounded-full bg-c-accent px-2 py-0.5 text-[11px] font-semibold text-c-on-accent">

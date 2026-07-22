@@ -515,6 +515,32 @@ body {
   }
 }
 
+/* ── Card gallery reveal ─────────────────────────────────────────────────
+   The stay card's lazy image gallery eases open (grid-rows 0fr→1fr) the frame
+   after images load, so the card grows to its natural height smoothly instead
+   of snapping. No fixed height cap; the inner wrapper clips during the tween.
+   Reduced motion → the .open state applies with no transition (instant). */
+.card-gallery-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  /* Constrain the (implicit) column to the card width so the wide horizontal
+     image row inside clips+scrolls instead of blowing out the card. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.card-gallery-reveal > div {
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+.card-gallery-reveal.open {
+  grid-template-rows: 1fr;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card-gallery-reveal {
+    transition: grid-template-rows var(--duration-slow) var(--ease-smooth-out);
+  }
+}
+
 /* Living logo — the cloud mark drifts gently, cloud-like (web only; its colour
    is bound to the phase accent via the token). Static under reduced motion. */
 @keyframes logo-float {

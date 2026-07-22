@@ -35,7 +35,7 @@ const INSPIRATION = [
   "Romantic weekend in Europe",
   "Family trip to Japan",
   "A week in the Greek islands",
-  "Surprise me ✨",
+  "Surprise me",
 ];
 
 type Message = {
