@@ -81,30 +81,40 @@ export function CloudMark({ size = "h-9 w-9" }: { size?: string }) {
  * the top, all the same cloud-white. The single drop-shadow on the wrapper
  * traces the whole silhouette, so it reads as one soft cloud — not a blob.
  */
+// One soft ambient shadow, applied as box-shadow (NOT filter: drop-shadow).
+// drop-shadow traces the rendered alpha and re-rasterizes every frame while the
+// reply streams in — on mobile it briefly paints the square bounding box, then
+// snaps to the rounded silhouette. box-shadow follows each element's
+// border-radius geometry, so it's the correct organic shape from the first
+// frame and never re-traces. The lobes sit BEHIND the opaque bubble (z-0 vs
+// z-[1]), so their shadow only shows where they poke out — no internal seams.
+const BUBBLE_SHADOW = "0 8px 16px rgba(2,8,23,0.16)";
+
 export function CloudBubble({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="w-fit max-w-[82%]"
-      style={{ filter: "drop-shadow(0 8px 16px rgba(2,8,23,0.16))" }}
-    >
+    <div className="w-fit max-w-[82%]">
       <div className="relative">
         <span
           aria-hidden="true"
           className="absolute -top-2.5 start-4 h-7 w-7 rounded-full bg-c-surface"
+          style={{ boxShadow: BUBBLE_SHADOW }}
         />
         <span
           aria-hidden="true"
           className="absolute -top-4 start-9 h-11 w-11 rounded-full bg-c-surface"
+          style={{ boxShadow: BUBBLE_SHADOW }}
         />
         <span
           aria-hidden="true"
           className="absolute -top-2 end-5 h-8 w-8 rounded-full bg-c-surface"
+          style={{ boxShadow: BUBBLE_SHADOW }}
         />
         <div
           dir="auto"
           className="relative z-[1] bg-c-surface px-4 py-2.5 text-[15px] leading-relaxed text-c-ink"
           style={{
             borderRadius: "26px 24px 28px 22px / 22px 28px 24px 26px",
+            boxShadow: BUBBLE_SHADOW,
             unicodeBidi: "plaintext",
           }}
         >

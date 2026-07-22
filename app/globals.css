@@ -498,7 +498,7 @@ body {
 @keyframes card-stagger-in {
   from {
     opacity: 0;
-    transform: translateY(var(--distance-base));
+    transform: translateY(var(--distance-medium));
   }
   to {
     opacity: 1;
@@ -508,6 +508,10 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .stagger-in {
     animation: card-stagger-in var(--duration-fast) var(--ease-smooth-out) both;
+    /* Promote to its own compositor layer so the staggered rise stays smooth on
+       mobile (transform/opacity only — no layout props animate). Bounded: cards
+       exist only on the latest message, so at most ~8 exist at once. */
+    will-change: transform, opacity;
   }
 }
 
