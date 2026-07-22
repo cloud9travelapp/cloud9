@@ -612,7 +612,9 @@ async function runAttractionSearch(
           "Invalid search: need a destination and both from and to dates as YYYY-MM-DD.",
       };
     }
-    const results = await withTimeout(searchAttractions(query), 15000);
+    // Backstop above the provider's own 8s fetch-abort — a slow/hung Activities
+    // call aborts inside the provider and falls back to mock fast.
+    const results = await withTimeout(searchAttractions(query), 11000);
     const sortBy: AttractionSort | undefined =
       q.sortBy === "price" || q.sortBy === "distance" || q.sortBy === "duration"
         ? q.sortBy

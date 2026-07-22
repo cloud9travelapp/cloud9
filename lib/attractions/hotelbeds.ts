@@ -26,6 +26,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_RADIUS_M = 20000; // 20km around the searched point
 const ITEMS_PER_PAGE = 40;
 const DEFAULT_PAX_AGE = 30;
+const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
 function cacheKey(query: AttractionQuery): string {
@@ -181,7 +182,17 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
   return offers;
 }
 
-async function fetchActivities(query: AttractionQuery, key: string): Promise<AttractionOffer[]> {
+type FetchResult = {
+  offers: AttractionOffer[];
+  status: number;
+  bodyBytes: number;
+  activityCount: number;
+  mapped: number;
+  firstKeys: string[];
+  rawSample: string; // TEMP verbose — remove once the mapping is confirmed
+};
+
+async function fetchActivities(query: AttractionQuery, key: string): Promise<FetchResult> {
   const body = {
     filters: [
       {
@@ -203,60 +214,103 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Att
     pagination: { itemsPerPage: ITEMS_PER_PAGE, page: 1 },
     order: "DEFAULT",
   };
-  const res = await fetch(`${HOTELBEDS_BASE_URL}/activity-api/3.0/activities`, {
-    method: "POST",
-    headers: activitiesHeaders(),
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 200);
-    throw new Error(`Hotelbeds activities failed: HTTP ${res.status} ${detail}`);
-  }
-  const data = (await res.json()) as { activities?: RawActivity[] };
-  const rawActivities = data.activities ?? [];
-  // Confirm the response shape on the first live call: log the raw field keys
-  // of the first activity so the mapping can be tuned against reality.
-  if (rawActivities[0]) {
-    await logDiag("activity_api_fields", {
-      count: rawActivities.length,
-      fields: Object.keys(rawActivities[0]),
-      sample: JSON.stringify(rawActivities[0]).slice(0, 600),
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${HOTELBEDS_BASE_URL}/activity-api/3.0/activities`, {
+      method: "POST",
+      headers: activitiesHeaders(),
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
     });
+    const rawText = await res.text();
+    if (!res.ok) {
+      // Carry status + body up so the trace records the real HTTP failure.
+      throw new Error(`Hotelbeds activities HTTP ${res.status}: ${rawText.slice(0, 400)}`);
+    }
+    const data = JSON.parse(rawText) as { activities?: RawActivity[] };
+    const rawActivities = Array.isArray(data.activities) ? data.activities : [];
+    let offers: AttractionOffer[] = [];
+    try {
+      offers = mapActivities(rawActivities, query);
+    } catch (mapErr) {
+      console.error("mapActivities threw:", mapErr);
+    }
+    await cachePut(key, offers);
+    return {
+      offers,
+      status: res.status,
+      bodyBytes: rawText.length,
+      activityCount: rawActivities.length,
+      mapped: offers.length,
+      firstKeys: rawActivities[0] ? Object.keys(rawActivities[0]) : [],
+      rawSample: rawText.slice(0, 2000),
+    };
+  } finally {
+    clearTimeout(timer);
   }
-  const offers = mapActivities(rawActivities, query);
-  await cachePut(key, offers);
-  return offers;
 }
 
+/**
+ * Every search leaves EXACTLY ONE `attraction_search_trace` diag row with its
+ * `source` and full outcome — a silent fallback (serving mock while reporting
+ * success) is the very thing the diag rule exists to prevent. If NO trace at
+ * all appears for a search, the hotelbeds case isn't running (stale build or
+ * ATTRACTION_PROVIDER not set) — which is itself the diagnosis.
+ */
 export async function hotelbedsSearchAttractions(
   query: AttractionQuery,
 ): Promise<AttractionOffer[]> {
+  const t0 = Date.now();
+  const base = { destination: query.destination, from: query.from, to: query.to };
   try {
     activitiesHeaders(); // throws early when keys are missing
     if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
       throw new Error("Hotelbeds activities search needs the destination's latitude and longitude.");
     }
     const key = cacheKey(query);
-    const cached = await cacheGet(key);
-    if (cached) return cached;
 
-    if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
-      await logDiag("attractions_quota_fallback", { destination: query.destination });
-      return mockSearchAttractions(query);
+    const cached = await cacheGet(key);
+    if (cached) {
+      await logDiag("attraction_search_trace", { ...base, source: "cache", count: cached.length, ms: Date.now() - t0 });
+      return cached;
     }
-    const offers = await fetchActivities(query, key);
-    // Empty live result (e.g. no activities near the point) is honest — return
-    // it as-is; the concierge relays "nothing in my current inventory here".
-    return offers;
+
+    const budgetSpent = await liveCallsToday();
+    if (budgetSpent >= DAILY_CALL_BUDGET) {
+      const mock = await mockSearchAttractions(query);
+      await logDiag("attraction_search_trace", { ...base, source: "mock:guard", budgetSpent, count: mock.length, ms: Date.now() - t0 });
+      return mock;
+    }
+
+    const r = await fetchActivities(query, key);
+    await logDiag("attraction_search_trace", {
+      ...base,
+      source: r.offers.length > 0 ? "live:real" : "live:empty",
+      status: r.status,
+      bodyBytes: r.bodyBytes,
+      activities: r.activityCount,
+      mapped: r.mapped,
+      firstKeys: r.firstKeys,
+      rawSample: r.rawSample, // TEMP — remove once mapping is confirmed
+      ms: Date.now() - t0,
+    });
+    // Honest: a genuine empty live result returns [] (the concierge says
+    // nothing's in inventory here). The LOUD trace above distinguishes a real
+    // "no activities" from a wrong-request "0 results" while we tune.
+    return r.offers;
   } catch (err) {
     console.error("Hotelbeds activities search failed:", err);
-    await logDiag("attraction_search_error", {
-      provider: "hotelbeds",
-      message: String(err).slice(0, 300),
+    const mock = await mockSearchAttractions(query);
+    await logDiag("attraction_search_trace", {
+      ...base,
+      source: "mock:error",
+      message: String(err).slice(0, 400),
+      count: mock.length,
+      ms: Date.now() - t0,
     });
-    // Graceful fallback: mock keeps the flow alive + honestly labelled.
-    return mockSearchAttractions(query);
+    return mock;
   }
 }
 
@@ -314,10 +368,12 @@ export async function hotelbedsActivityContent(code: string): Promise<ActivityCo
       await logDiag("attractions_quota_fallback", { path: "content", code });
       return null; // honest: content unavailable (the modal shows the note)
     }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(
       `${HOTELBEDS_BASE_URL}/activity-content-api/1.0/activities/${encodeURIComponent(code)}?language=en`,
-      { headers: activitiesHeaders(), cache: "no-store" },
-    );
+      { headers: activitiesHeaders(), cache: "no-store", signal: controller.signal },
+    ).finally(() => clearTimeout(timer));
     if (!res.ok) throw new Error(`Activity content failed: HTTP ${res.status}`);
     const data = (await res.json()) as Record<string, unknown>;
     const activity = (data.activityContent ?? data.activity ?? data) as Record<string, unknown>;
