@@ -14,20 +14,24 @@ import {
   StaySortChips,
   ShowMoreButton,
   DateCalendar,
+  type AttractionOfferView,
   type Lang,
   type StayOfferView,
   type StaySortMode,
   type StaysPayload,
 } from "./message-parts";
 import { StayDetailModal } from "./stay-detail-modal";
+import { AttractionStack } from "./attraction-stack";
+import { AttractionDetailModal } from "./attraction-detail-modal";
 import {
+  collectShownAttractionIds,
   collectShownStayIds,
   hasErrorMarker,
   parseAssistantMessage,
   sortStayOffers,
   splitMore,
 } from "@/lib/chat/blocks";
-import { isFavorite, type TripFavorite } from "@/lib/favorites";
+import { isFavorite, type FavoriteItemType, type TripFavorite } from "@/lib/favorites";
 import HeroAtmosphere from "@/components/landing/hero/hero-atmosphere";
 
 // Starter prompts shown on the empty state (interface language: English).
@@ -225,7 +229,7 @@ export default function ChatClient({
   favorites: TripFavorite[];
   onToggleFavorite: (
     tripId: string | null,
-    itemType: "stay" | "flight",
+    itemType: FavoriteItemType,
     item: { id: string } & Record<string, unknown>,
     lang: Lang,
   ) => void;
@@ -240,6 +244,10 @@ export default function ChatClient({
   const [isStreaming, setIsStreaming] = useState(false);
   const [detailFor, setDetailFor] = useState<{
     offer: StayOfferView;
+    lang: Lang;
+  } | null>(null);
+  const [attractionDetailFor, setAttractionDetailFor] = useState<{
+    offer: AttractionOfferView;
     lang: Lang;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -408,6 +416,32 @@ export default function ChatClient({
           }}
         />
       ) : null}
+      {attractionDetailFor ? (
+        <AttractionDetailModal
+          attractionId={attractionDetailFor.offer.id}
+          name={attractionDetailFor.offer.name}
+          category={attractionDetailFor.offer.category}
+          area={attractionDetailFor.offer.area}
+          durationMinutes={attractionDetailFor.offer.durationMinutes}
+          fromPrice={attractionDetailFor.offer.fromPrice}
+          currency={attractionDetailFor.offer.currency}
+          lang={attractionDetailFor.lang}
+          hearted={isFavorite(favorites, attractionDetailFor.offer.id)}
+          onToggleHeart={() =>
+            onToggleFavorite(
+              currentTripId,
+              "attraction",
+              attractionDetailFor.offer,
+              attractionDetailFor.lang,
+            )
+          }
+          onClose={() => setAttractionDetailFor(null)}
+          onSelect={(choice) => {
+            setAttractionDetailFor(null);
+            void send(choice);
+          }}
+        />
+      ) : null}
       {/* Header — frosted, floats over the sky */}
       <header className="flex items-center justify-between border-b border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex items-center gap-2">
@@ -496,12 +530,12 @@ export default function ChatClient({
               // whether to show flight cards, stay cards, quick-reply pills, or
               // a date calendar below — the mutually-exclusive, cards-win-ties
               // decision lives in lib/chat/blocks (unit-tested).
-              const { text, flights, stays, options, dates } =
+              const { text, flights, stays, attractions, options, dates } =
                 parseAssistantMessage(m.content);
               const isLast = i === messages.length - 1;
               // A message that is ONLY a block (no lead-in text) renders just
               // its block — no empty bubble stuck on the thinking indicator.
-              const hasBlock = !!(options || flights || stays || dates);
+              const hasBlock = !!(options || flights || stays || attractions || dates);
               return (
                 <div key={i} className="msg-enter flex flex-col items-start pt-2">
                   {text || !hasBlock ? (
@@ -581,6 +615,23 @@ export default function ChatClient({
                       onSelect={(s) => void send(s)}
                       onOpenDetail={(offer) =>
                         setDetailFor({ offer, lang: stays.lang })
+                      }
+                    />
+                  ) : null}
+                  {attractions && isLast && !isStreaming ? (
+                    <AttractionStack
+                      attractions={attractions}
+                      moreKey={splitMore(m.content)?.key ?? null}
+                      sessionSeenIds={collectShownAttractionIds(
+                        messages.map((msg) => msg.content),
+                      )}
+                      isHearted={(id) => isFavorite(favorites, id)}
+                      onToggleHeart={(offer) =>
+                        onToggleFavorite(currentTripId, "attraction", offer, attractions.lang)
+                      }
+                      onSelect={(s) => void send(s)}
+                      onOpenDetail={(offer) =>
+                        setAttractionDetailFor({ offer, lang: attractions.lang })
                       }
                     />
                   ) : null}

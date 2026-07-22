@@ -18,6 +18,17 @@ import {
 } from "@/lib/stays/provider";
 import type { StayOffer, StayQuery } from "@/lib/stays/types";
 import { applyMinStars, nextStayBatch, sortOffersBy } from "@/lib/stays/present";
+import {
+  IS_MOCK_ATTRACTION_PROVIDER,
+  peekAttractions,
+  searchAttractions,
+} from "@/lib/attractions/provider";
+import type { AttractionQuery } from "@/lib/attractions/types";
+import {
+  type AttractionSort,
+  nextAttractionBatch,
+  sortOffersBy as sortAttractionsBy,
+} from "@/lib/attractions/present";
 import { stripMoreBlock } from "@/lib/chat/blocks";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
@@ -511,6 +522,145 @@ async function runStaySearch(
   }
 }
 
+const ATTRACTION_CATEGORIES = [
+  "tours",
+  "museums",
+  "outdoors",
+  "food",
+  "nightlife",
+  "family",
+  "water",
+  "culture",
+  "adventure",
+  "wellness",
+] as const;
+
+const ATTRACTION_TOOL: Anthropic.Tool = {
+  name: "search_attractions",
+  description:
+    "Search for things to do — tours, activities, attractions, experiences — in a destination. Call this once you know the destination and the trip's date range. ALWAYS include the destination's latitude and longitude — you know city coordinates; never ask the user for them.",
+  input_schema: {
+    type: "object",
+    properties: {
+      destination: { type: "string", description: "City or area name, e.g. Rome" },
+      latitude: { type: "number", description: "Latitude of the destination's center" },
+      longitude: { type: "number", description: "Longitude of the destination's center" },
+      from: { type: "string", description: "Trip window start, YYYY-MM-DD" },
+      to: { type: "string", description: "Trip window end, YYYY-MM-DD" },
+      category: {
+        type: "string",
+        enum: [...ATTRACTION_CATEGORIES],
+        description:
+          'Filter to ONE category, ONLY when the user asks for a specific kind ("museums", "food tours", "boat trips" → water). Omit otherwise.',
+      },
+      priceLevel: {
+        type: "string",
+        enum: ["budget", "mid", "premium"],
+        description: "Budget level (optional).",
+      },
+      keyword: {
+        type: "string",
+        description:
+          'Free-text focus ONLY when the user names something specific ("cooking class", "sunset", "wine tasting"). Omit otherwise.',
+      },
+      sortBy: {
+        type: "string",
+        enum: ["price", "distance", "duration"],
+        description:
+          'Card order, ONLY when the user\'s own words ask for it: cheap-focus → "price"; location emphasis ("close to the center") → "distance"; time emphasis ("something quick", "a half-day") → "duration". Omit when they gave no such signal.',
+      },
+    },
+    required: ["destination", "from", "to"],
+  },
+};
+
+/**
+ * Run a search_attractions call. Mirrors runStaySearch (no by-name / minStars /
+ * deal): build a validated AttractionQuery, search, apply the route-level sortBy,
+ * cap to 8 shown cards, and probe the cache-only pool for a "show more" ticket.
+ */
+async function runAttractionSearch(
+  input: unknown,
+): Promise<{ result: string; moreKey?: string }> {
+  try {
+    const q = (input ?? {}) as Partial<AttractionQuery> & { sortBy?: unknown };
+    const query: AttractionQuery = {
+      destination: String(q.destination ?? "").trim(),
+      from: String(q.from ?? ""),
+      to: String(q.to ?? ""),
+      latitude: typeof q.latitude === "number" ? q.latitude : undefined,
+      longitude: typeof q.longitude === "number" ? q.longitude : undefined,
+      category: (ATTRACTION_CATEGORIES as readonly string[]).includes(String(q.category))
+        ? (q.category as AttractionQuery["category"])
+        : undefined,
+      priceLevel:
+        q.priceLevel === "budget" || q.priceLevel === "mid" || q.priceLevel === "premium"
+          ? q.priceLevel
+          : undefined,
+      keyword:
+        typeof q.keyword === "string" && q.keyword.trim()
+          ? q.keyword.trim().slice(0, 120)
+          : undefined,
+    };
+    if (
+      !query.destination ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.from) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.to)
+    ) {
+      return {
+        result:
+          "Invalid search: need a destination and both from and to dates as YYYY-MM-DD.",
+      };
+    }
+    const results = await withTimeout(searchAttractions(query), 15000);
+    const sortBy: AttractionSort | undefined =
+      q.sortBy === "price" || q.sortBy === "distance" || q.sortBy === "duration"
+        ? q.sortBy
+        : undefined;
+    let offers = sortBy ? sortAttractionsBy(results, sortBy) : results;
+    offers = offers.slice(0, 8); // card cap (the block caps too); leaves the rest for "show more"
+    const mock =
+      IS_MOCK_ATTRACTION_PROVIDER ||
+      (results.length > 0 && results.every((o) => o.id.startsWith("mock-")));
+    let moreKey: string | undefined;
+    if (offers.length > 0) {
+      try {
+        const pool = await peekAttractions(query);
+        if (pool) {
+          const probe = nextAttractionBatch(pool, {
+            priceLevel: query.priceLevel,
+            sortBy,
+            excludeIds: offers.map((o) => o.id),
+            batch: 1,
+          });
+          if (probe.offers.length > 0) {
+            moreKey = JSON.stringify({
+              destination: query.destination,
+              latitude: query.latitude,
+              longitude: query.longitude,
+              from: query.from,
+              to: query.to,
+              ...(query.category ? { category: query.category } : {}),
+              ...(query.priceLevel ? { priceLevel: query.priceLevel } : {}),
+              ...(sortBy ? { sortBy } : {}),
+            });
+          }
+        }
+      } catch {
+        /* best-effort — no button beats a wrong button */
+      }
+    }
+    return { result: JSON.stringify({ mock, offers }), moreKey };
+  } catch (err) {
+    console.error("Attraction search failed:", err);
+    await logDiag("attraction_search_error", { message: String(err).slice(0, 300) });
+    return {
+      result:
+        "The attractions search is unavailable right now. Apologize briefly in this turn's reply language and offer to try again.",
+    };
+  }
+}
+
 export async function POST(request: Request) {
   const t0 = Date.now();
   const session = await auth();
@@ -863,11 +1013,24 @@ Stays (hotels & accommodation): you can search real accommodation with the searc
   Set "lang" to your reply language ("he"/"en"). Copy "mock" and the entire "offers" array from the tool result verbatim — do not change any value inside offers. Set "recommendedId" to the exact "id" of the offer your best-fit sentence names — the UI badges that card as your recommendation and floats it to the top; recommendedId must match an id in the offers array, and when you named no pick (e.g. a single named-hotel card) omit it. At most one STAYS block per message, valid JSON only. If the tool returns an error sentence instead of data, don't output a block — just apologize briefly and offer to try again.
 - ALWAYS present stay offers as the STAYS card block — every single time, including re-presentations, comparisons ("show me those again", "compare the two"), and follow-ups after a flight selection. NEVER write hotels as a text or markdown list (no "**Old Town Apartments** — $135" lines). If you no longer have the exact offers JSON, call search_stays again to get it, then emit the block.
 
-You can use BOTH search tools in one conversation — for example find a flight, then a hotel for the same trip. That's the natural concierge flow.
+ATTRACTIONS ("things to do" — tours, activities, experiences):
+- Call search_attractions once you know the destination and the trip's date range (pass its latitude/longitude like search_stays; pass the trip's dates as from/to). LISTEN for what they're into and pass ONLY signals in their OWN words — a category (tours, museums, outdoors, food, nightlife, family, water, culture, adventure, wellness), a priceLevel, a keyword, or a sort preference. Never assume a category; if they're vague, search broadly and let the cards do the narrowing. Be inventory-honest: describe what's actually in the results, never what the city "has".
+- When the tool returns attraction data:
+  1. Write the results text in this turn's reply language: ONE opening line (how many ideas / what context — NO names, prices, or durations in it), plus AT MOST ONE best-fit sentence naming AT MOST ONE offer — your "הכי שווה" pick with its single decisive reason, its name/price copied EXACTLY from the JSON. NEVER enumerate multiple attractions with prices in text — that's what the cards are for.
+  2. Then on their own new lines append EXACTLY this block:
+
+<<ATTRACTIONS>>
+{"lang":"he","mock":true,"recommendedId":"mock-abc-3","offers":[ ... ]}
+<<END>>
+
+  Set "lang" to your reply language ("he"/"en"). Copy "mock" and the entire "offers" array from the tool result verbatim — change no value inside offers. Set "recommendedId" to the exact "id" your best-fit sentence names (must match a shown id; omit when you named no pick). At most one ATTRACTIONS block per message, valid JSON only. If the tool returns an error sentence instead of data, don't output a block — apologize briefly and offer to try again.
+- ALWAYS present attractions as the ATTRACTIONS card block — the SAME offers-are-never-text rule as flights and stays. Choosing happens from the cards.
+
+You can use the search tools freely in one conversation — a flight, a hotel, and things to do for the same trip. That's the natural concierge flow.
 
 Text with a tool call is USER-VISIBLE — always. Anything you write before calling a tool appears on the traveler's screen as part of the conversation. So it is either the short user-facing note in this turn's reply language ("רגע, בודק טיסות...") or it is NOTHING: never narrate process, never mention tools or that you're calling one, never think out loud ("calling the tool", "no comment this time") — in any language. When calling remember_preference specifically, write NO text at all alongside the call — that tool is silent; your reply comes after its result.
 
-Offers are NEVER text, in any context. Every time a flight or stay offer appears in your message — first presentation, re-presentation ("show me those again"), comparison, recommendation, or a trip summary/wrap-up — it is presented as its card block. You may reference specific offers in text ONLY in a message that also carries their card block. Naming an offer with its price in plain text is always a bug — including "best value" or "I'd recommend" phrasings: recommend by pointing at a card you are showing in that same message. If a summary would mention options for a piece the user hasn't chosen yet, mark that piece as still open and show (or offer to show) the cards instead of describing them.
+Offers are NEVER text, in any context. Every time a flight, stay, or attraction offer appears in your message — first presentation, re-presentation ("show me those again"), comparison, recommendation, or a trip summary/wrap-up — it is presented as its card block. You may reference specific offers in text ONLY in a message that also carries their card block. Naming an offer with its price in plain text is always a bug — including "best value" or "I'd recommend" phrasings: recommend by pointing at a card you are showing in that same message. If a summary would mention options for a piece the user hasn't chosen yet, mark that piece as still open and show (or offer to show) the cards instead of describing them.
 
 Cards exist ONLY on your latest message. The moment the traveler sends anything — a tap, a word — every earlier card disappears from their screen (your own history still shows the blocks; their screen does not). So pointing at a previous message's card ("אפשר לבחור אותו מהכרטיס למעלה") is ALWAYS a bug. Whenever their next step is choosing among offers — INCLUDING when they decline a refinement and keep the existing set ("להשאר עם האופציות הקיימות", "the current options are fine") — re-present those SAME offers as a fresh card block (the cached search makes re-calling the tool free; keep recommendedId) with one short line, and END the message there. And an open choice is never settled: your recommendation, however confident, settles nothing — never advance to another piece (flights, the next leg) while a choice is still waiting for their pick.
 
@@ -911,6 +1074,7 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
       // the model finishes as a server-authored <<MORE>> block (the model
       // never sees it; displayText strips it from every surface).
       let staysMoreKey: string | null = null;
+      let attractionsMoreKey: string | null = null;
       try {
         // Tool round-trip loop. A normal reply (no tool call) streams exactly as
         // before and breaks after the first turn; a flight request adds one hop:
@@ -924,6 +1088,7 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             tools: [
               FLIGHT_TOOL,
               STAY_TOOL,
+              ATTRACTION_TOOL,
               HOTEL_DETAILS_TOOL,
               CHECK_FAVORITES_TOOL,
               PREFERENCE_TOOL,
@@ -955,6 +1120,7 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             const known =
               block.name === "search_flights" ||
               block.name === "search_stays" ||
+              block.name === "search_attractions" ||
               block.name === "get_hotel_details" ||
               block.name === "check_favorites" ||
               block.name === "remember_preference";
@@ -965,6 +1131,10 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
               const r = await runStaySearch(block.input);
               result = r.result;
               if (r.moreKey) staysMoreKey = r.moreKey;
+            } else if (block.name === "search_attractions") {
+              const r = await runAttractionSearch(block.input);
+              result = r.result;
+              if (r.moreKey) attractionsMoreKey = r.moreKey;
             } else if (block.name === "get_hotel_details") {
               result = await runHotelDetails(block.input);
             } else if (block.name === "check_favorites") {
@@ -1001,8 +1171,12 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
         // "show more" button survives the new-trip navigation and reloads —
         // the live bug where a fresh trip's first search lost its button.
         // The model never sees it: history is stripped via stripMoreBlock.
-        if (staysMoreKey) {
-          const moreBlock = `\n<<MORE>>\n${JSON.stringify({ key: staysMoreKey })}\n<<END>>`;
+        // Stays and attractions are mutually exclusive per message, so at most
+        // one MORE ticket exists; the client routes it to the right endpoint by
+        // which offers block is present.
+        const moreKey = staysMoreKey || attractionsMoreKey;
+        if (moreKey) {
+          const moreBlock = `\n<<MORE>>\n${JSON.stringify({ key: moreKey })}\n<<END>>`;
           assistantText += moreBlock;
           controller.enqueue(encoder.encode(moreBlock));
         }
