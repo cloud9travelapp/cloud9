@@ -63,4 +63,7 @@ export type AttractionDetail = {
   images: string[]; // absolute URLs, gallery order
   included?: string[]; // "what's included" bullets (neutral display strings)
   rating?: number; // display-when-present (see AttractionOffer.rating)
+  /** True when the Content API call FAILED (e.g. eval-tier 403 quota) — the
+   *  modal shows an honest "couldn't load photos & details" note. */
+  contentUnavailable?: boolean;
 };

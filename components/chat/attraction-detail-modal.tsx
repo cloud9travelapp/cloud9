@@ -27,6 +27,7 @@ const T = {
     mock: "נתוני דמה",
     select: "בחירה",
     selected: "בחרתי",
+    contentNote: "התמונות והתיאור לא נטענו כרגע — אלה הפרטים שכן זמינים.",
     error: "הפרטים לא זמינים כרגע. אפשר לנסות שוב מאוחר יותר.",
   },
   en: {
@@ -39,6 +40,7 @@ const T = {
     mock: "Test data",
     select: "Select",
     selected: "Selected",
+    contentNote: "Photos and the description couldn't load right now — here's what we do have.",
     error: "Details are unavailable right now. Try again later.",
   },
 };
@@ -195,6 +197,11 @@ export function AttractionDetailModal({
             <div className="flex justify-center py-10"><LoadingDots /></div>
           ) : (
             <>
+              {detail.contentUnavailable ? (
+                <p dir="auto" className="rounded-card bg-c-accent-soft/60 px-3 py-2 text-xs text-c-muted">
+                  {L.contentNote}
+                </p>
+              ) : null}
               {detail.images.length > 0 ? (
                 <SnapGallery images={detail.images} imgClass="h-44 w-64" slidePx={264} />
               ) : null}

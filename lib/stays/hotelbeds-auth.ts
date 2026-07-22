@@ -6,13 +6,17 @@ import { createHash } from "node:crypto";
 export const HOTELBEDS_BASE_URL =
   process.env.HOTELBEDS_BASE_URL || "https://api.test.hotelbeds.com";
 
-/** Request headers: Api-key + SHA-256(apiKey+secret+unix-seconds) signature.
+/** Request headers for ANY APItude product: Api-key + SHA-256(apiKey + secret +
+ *  unix-seconds) signature. The scheme is identical across Hotels / Activities /
+ *  Transfers — only the key/secret differ (Hotelbeds issues one per product).
  *  Throws when the keys are missing (callers surface a graceful error). */
-export function hotelbedsHeaders(): Record<string, string> {
-  const apiKey = process.env.HOTELBEDS_API_KEY;
-  const secret = process.env.HOTELBEDS_SECRET;
+export function hotelbedsHeadersFor(
+  apiKey: string | undefined,
+  secret: string | undefined,
+  envLabel: string,
+): Record<string, string> {
   if (!apiKey || !secret) {
-    throw new Error("Missing HOTELBEDS_API_KEY / HOTELBEDS_SECRET env vars.");
+    throw new Error(`Missing ${envLabel} env vars.`);
   }
   const signature = createHash("sha256")
     .update(`${apiKey}${secret}${Math.floor(Date.now() / 1000)}`)
@@ -23,4 +27,22 @@ export function hotelbedsHeaders(): Record<string, string> {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
+}
+
+/** Hotels APItude auth (HOTELBEDS_API_KEY / HOTELBEDS_SECRET). */
+export function hotelbedsHeaders(): Record<string, string> {
+  return hotelbedsHeadersFor(
+    process.env.HOTELBEDS_API_KEY,
+    process.env.HOTELBEDS_SECRET,
+    "HOTELBEDS_API_KEY / HOTELBEDS_SECRET",
+  );
+}
+
+/** Activities APItude auth — a SEPARATE key/secret + its own 50/day quota. */
+export function activitiesHeaders(): Record<string, string> {
+  return hotelbedsHeadersFor(
+    process.env.HOTELBEDS_ACTIVITIES_API_KEY,
+    process.env.HOTELBEDS_ACTIVITIES_SECRET,
+    "HOTELBEDS_ACTIVITIES_API_KEY / HOTELBEDS_ACTIVITIES_SECRET",
+  );
 }

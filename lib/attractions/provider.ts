@@ -1,5 +1,9 @@
 import type { AttractionOffer, AttractionQuery } from "./types";
 import { mockSearchAttractions } from "./mock";
+import {
+  hotelbedsPeekAttractions,
+  hotelbedsSearchAttractions,
+} from "./hotelbeds";
 
 const ATTRACTION_PROVIDER = process.env.ATTRACTION_PROVIDER || "mock";
 
@@ -22,8 +26,8 @@ export async function searchAttractions(
   query: AttractionQuery,
 ): Promise<AttractionOffer[]> {
   switch (ATTRACTION_PROVIDER) {
-    // case "hotelbeds":
-    //   return hotelbedsSearchAttractions(query);
+    case "hotelbeds":
+      return hotelbedsSearchAttractions(query);
     // case "viator":
     //   return viatorSearchAttractions(query);
     case "mock":
@@ -41,8 +45,8 @@ export async function peekAttractions(
   query: AttractionQuery,
 ): Promise<AttractionOffer[] | null> {
   switch (ATTRACTION_PROVIDER) {
-    // case "hotelbeds":
-    //   return hotelbedsPeekAttractions(query);
+    case "hotelbeds":
+      return hotelbedsPeekAttractions(query);
     case "mock":
     default:
       return mockSearchAttractions(query);
