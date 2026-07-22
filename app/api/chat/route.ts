@@ -582,6 +582,14 @@ const ATTRACTION_TOOL: Anthropic.Tool = {
 async function runAttractionSearch(
   input: unknown,
 ): Promise<{ result: string; moreKey?: string }> {
+  // Self-diagnosing dispatch log: the deployed commit + the raw provider env
+  // value. Fires whenever search_attractions runs, at the ROUTE level (before
+  // the provider switch), so it reveals a stale build or a wrong env value
+  // even when the hotelbeds provider path is never reached.
+  await logDiag("attraction_dispatch", {
+    provider: process.env.ATTRACTION_PROVIDER ?? "(unset)",
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "?").slice(0, 7),
+  });
   try {
     const q = (input ?? {}) as Partial<AttractionQuery> & { sortBy?: unknown };
     const query: AttractionQuery = {
