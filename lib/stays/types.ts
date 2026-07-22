@@ -110,4 +110,9 @@ export type StayDetail = {
   rooms: Room[] | null; // null = no valid captured rooms (stale/absent)
   currency?: string; // room-rate currency (from the capturing search)
   pricedFor?: { checkIn: string; checkOut: string; guests: number };
+  /** True when the Content API call FAILED (e.g. the eval-tier 50/day quota
+   *  returns HTTP 403) — distinct from a hotel that simply has no photos. The
+   *  modal shows the captured rooms plus an honest "couldn't load photos &
+   *  details right now" note instead of a blank section. */
+  contentUnavailable?: boolean;
 };

@@ -89,6 +89,9 @@ export async function getStayDetail(hotelId: string): Promise<StayDetail> {
       reviewScore: content?.reviewScore,
       reviewCount: content?.reviewCount,
       rooms: attachRoomImages(captured?.rooms ?? null, content?.roomImages),
+      // content===null means the Content API call failed (403 quota / error),
+      // NOT that the hotel has no photos — drives the honest modal note.
+      contentUnavailable: !content,
       currency: captured?.currency,
       pricedFor: captured
         ? {

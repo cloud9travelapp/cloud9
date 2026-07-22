@@ -20,6 +20,7 @@ const T = {
     pricedFor: (a: string, b: string) => `מחירים לתאריכים ${a} עד ${b}`,
     perNight: "ללילה",
     noRooms: "מחירי חדרים לא זמינים כרגע — חפשו שוב כדי לרענן.",
+    contentNote: "התמונות והתיאור לא נטענו כרגע — אלה החדרים והמחירים שכן זמינים.",
     error: "הפרטים לא זמינים כרגע. אפשר לנסות שוב מאוחר יותר.",
     close: "סגירה",
     heart: "שמור למועדפים",
@@ -46,6 +47,7 @@ const T = {
     pricedFor: (a: string, b: string) => `Prices for ${a} to ${b}`,
     perNight: "per night",
     noRooms: "Room prices aren't available right now — search again to refresh.",
+    contentNote: "Photos and the description couldn't load right now — here are the rooms and prices we do have.",
     error: "Details are unavailable right now. Try again later.",
     close: "Close",
     heart: "Save to favorites",
@@ -260,6 +262,13 @@ export function StayDetailModal({
             <div className="flex justify-center py-10"><LoadingDots /></div>
           ) : (
             <>
+              {/* Content-API unavailable (e.g. eval-tier 403) → honest note in
+                  place of the blank gallery/description, never a blank section. */}
+              {detail.contentUnavailable ? (
+                <p dir="auto" className="rounded-card bg-c-accent-soft/60 px-3 py-2 text-xs text-c-muted">
+                  {L.contentNote}
+                </p>
+              ) : null}
               {/* gallery — full-bleed to the panel edge so photos breathe;
                   scrollbar hidden (the peeking next photo IS the affordance),
                   nav = edge fades or snap dots (variant under review) */}

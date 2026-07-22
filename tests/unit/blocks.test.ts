@@ -3,6 +3,7 @@ import {
   collectShownStayIds,
   displayText,
   fixSentenceSpacing,
+  stripHtmlTags,
   hasErrorMarker,
   parseAssistantMessage,
   sortStayOffers,
@@ -305,5 +306,21 @@ describe("collectShownStayIds (session-wide show-more exclusion seed)", () => {
   it("empty conversation → empty seed", () => {
     expect(collectShownStayIds([])).toEqual([]);
     expect(collectShownStayIds(["no blocks here"])).toEqual([]);
+  });
+});
+
+describe("stripHtmlTags", () => {
+  it("turns <br> into a newline and removes inline tags (the <br> leak)", () => {
+    // displayText trims, so a trailing <br> vanishes cleanly
+    expect(displayText("או שתעדיף שאני אציע?<br>\n<<OPTIONS>>\n{}\n<<END>>")).toBe(
+      "או שתעדיף שאני אציע?",
+    );
+    expect(stripHtmlTags("line1<br>line2")).toBe("line1\nline2");
+    expect(stripHtmlTags("say <b>hi</b> now")).toBe("say hi now");
+    expect(stripHtmlTags('<p class="x">text</p>')).toBe("text");
+  });
+  it("leaves bare '<' and non-tag angle text alone", () => {
+    expect(stripHtmlTags("2 < 3 and a > b")).toBe("2 < 3 and a > b");
+    expect(stripHtmlTags("email <a@b.com>")).toBe("email <a@b.com>");
   });
 });

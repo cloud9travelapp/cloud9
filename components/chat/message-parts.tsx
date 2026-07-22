@@ -1145,7 +1145,7 @@ export function AttractionCard({
             <div className="mb-2">
               <SnapGallery
                 images={images}
-                imgClass="h-36 w-64"
+                imgClass="h-32 w-64"
                 slidePx={264}
                 bleedClass="-mx-3"
                 padClass="px-3"

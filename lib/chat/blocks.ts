@@ -110,9 +110,26 @@ export function hasErrorMarker(content: string): boolean {
   return /<<\s*ERROR\s*>>/i.test(content);
 }
 
+/**
+ * Strip stray HTML/markdown tags the model sometimes emits (a live session
+ * leaked "...אציע?<br>"). Removes only HTML-ish tags — "</?letter...>" — so a
+ * bare "a < b" or a math "<" in prose is left alone. A bulletproof net on top
+ * of the prompt's no-tags rule.
+ */
+export function stripHtmlTags(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n") // a <br> is a line break, not a deletion
+    // real HTML tags only: <tag>, </tag>, <tag …attrs>, <tag/> — the tag name
+    // must be followed by whitespace, "/>", or ">", so "a < b" and "<a@b.com>"
+    // are left alone.
+    .replace(/<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?\/?>/g, "");
+}
+
 export function displayText(content: string): string {
   const i = content.indexOf("<<");
-  return fixSentenceSpacing((i === -1 ? content : content.slice(0, i)).trimEnd());
+  return fixSentenceSpacing(
+    stripHtmlTags(i === -1 ? content : content.slice(0, i)).trimEnd(),
+  );
 }
 
 export function blockRaw(content: string, tag: string): string | null {
