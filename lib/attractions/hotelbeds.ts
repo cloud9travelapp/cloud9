@@ -250,7 +250,18 @@ type FetchResult = {
   mapped: number;
   firstKeys: string[];
   rawSample: string; // TEMP verbose — remove once the mapping is confirmed
+  quotaHeaders: Record<string, string>;
 };
+
+/** Any quota/rate-limit-ish response headers — the docs document neither the
+ *  daily-quota reset time nor quota headers, so we observe what's really sent. */
+function quotaishHeaders(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  res.headers.forEach((v, k) => {
+    if (/quota|limit|remaining|reset|retry/i.test(k)) out[k] = v;
+  });
+  return out;
+}
 
 async function fetchActivities(query: AttractionQuery, key: string): Promise<FetchResult> {
   // Request shape per the docs + a working integration (2026-07-22 research):
@@ -289,8 +300,11 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
     });
     const rawText = await res.text();
     if (!res.ok) {
-      // Carry status + body up so the trace records the real HTTP failure.
-      throw new Error(`Hotelbeds activities HTTP ${res.status}: ${rawText.slice(0, 400)}`);
+      // Carry status + quota headers + body up so the trace records the real
+      // HTTP failure (the mock:error trace logs this message verbatim).
+      throw new Error(
+        `Hotelbeds activities HTTP ${res.status} ${JSON.stringify(quotaishHeaders(res))}: ${rawText.slice(0, 300)}`,
+      );
     }
     const data = JSON.parse(rawText) as { activities?: RawActivity[] };
     const rawActivities = Array.isArray(data.activities) ? data.activities : [];
@@ -309,6 +323,7 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       mapped: offers.length,
       firstKeys: rawActivities[0] ? Object.keys(rawActivities[0]) : [],
       rawSample: rawText.slice(0, 2000),
+      quotaHeaders: quotaishHeaders(res),
     };
   } finally {
     clearTimeout(timer);
@@ -357,6 +372,7 @@ export async function hotelbedsSearchAttractions(
       mapped: r.mapped,
       firstKeys: r.firstKeys,
       rawSample: r.rawSample, // TEMP — remove once mapping is confirmed
+      quotaHeaders: r.quotaHeaders,
       ms: Date.now() - t0,
     });
     // Honest: a genuine empty live result returns [] (the concierge says

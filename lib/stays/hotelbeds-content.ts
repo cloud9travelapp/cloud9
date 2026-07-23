@@ -382,6 +382,18 @@ export async function getHotelbedsContent(
       { headers: hotelbedsHeaders(), cache: "no-store" },
     );
     if (!res.ok) {
+      // Measure, don't assume: capture any quota/rate-limit headers the API
+      // sends alongside the failure (the docs document neither the reset time
+      // nor quota headers — this observes reality).
+      const quotaish: Record<string, string> = {};
+      res.headers.forEach((v, k) => {
+        if (/quota|limit|remaining|reset|retry/i.test(k)) quotaish[k] = v;
+      });
+      await logDiag("content_api_http", {
+        hotelCode,
+        status: res.status,
+        headers: quotaish,
+      });
       throw new Error(`Content details failed: HTTP ${res.status}`);
     }
     const data = (await res.json()) as { hotel?: ContentApiHotel };
