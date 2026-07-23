@@ -23,7 +23,6 @@ import type {
 
 const DAILY_CALL_BUDGET = 45;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const SEARCH_RADIUS_M = 20000; // 20km around the searched point
 const ITEMS_PER_PAGE = 40;
 const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
@@ -94,25 +93,48 @@ async function liveCallsToday(): Promise<number> {
 }
 
 // ── Response mapping (defensive; field paths confirmed on the first live call)
+// Shapes per the docs + a working integration (confirmed 2026-07-22 research):
+// name/description live under `content`, the from-price is `amountsFrom`
+// (PLURAL — a number or an array of pax amounts), currency is `currencyName`,
+// duration rides each modality. All optional/defensive — the trace's rawSample
+// verifies against reality.
+type RawAmountsFrom = number | Array<{ amount?: number }>;
 type RawActivity = {
   code?: string;
+  activityCode?: string;
   name?: string | { content?: string };
-  country?: { destinations?: unknown };
   geolocation?: { latitude?: number; longitude?: number };
   content?: {
+    name?: string;
     description?: string;
     duration?: { value?: number; metric?: string };
+    location?: {
+      startingPoints?: Array<{
+        meetingPoint?: { geolocation?: { latitude?: number; longitude?: number } };
+      }>;
+      geolocation?: { latitude?: number; longitude?: number };
+    };
     segmentation?: Array<{ code?: string; name?: string }>;
   };
-  segmentationCodes?: Array<{ code?: string }>;
-  amountFrom?: number;
+  amountsFrom?: RawAmountsFrom;
   modalities?: Array<{
+    amountsFrom?: RawAmountsFrom;
+    duration?: { value?: number; metric?: string };
     amount?: { amounts?: Array<{ amount?: number }> };
-    amountsFromDetail?: { paxAmounts?: Array<{ amount?: number }> };
     rates?: Array<{ rateDetails?: Array<{ totalAmount?: number }> }>;
   }>;
+  currencyName?: string;
   currency?: string;
 };
+
+function amountsFromMin(v: RawAmountsFrom | undefined): number | null {
+  if (typeof v === "number") return v;
+  if (Array.isArray(v)) {
+    const nums = v.map((x) => x?.amount).filter((n): n is number => typeof n === "number");
+    if (nums.length) return Math.min(...nums);
+  }
+  return null;
+}
 
 /** Map a Hotelbeds segmentation/type code or label to our neutral category. */
 function toCategory(raw: RawActivity): AttractionCategory {
@@ -134,48 +156,68 @@ function toCategory(raw: RawActivity): AttractionCategory {
 }
 
 function firstPrice(raw: RawActivity): number | null {
-  if (typeof raw.amountFrom === "number") return raw.amountFrom;
+  const top = amountsFromMin(raw.amountsFrom);
+  if (top != null) return top;
   const nums: number[] = [];
   for (const m of raw.modalities ?? []) {
+    const mf = amountsFromMin(m.amountsFrom);
+    if (mf != null) nums.push(mf);
     for (const a of m.amount?.amounts ?? []) if (typeof a.amount === "number") nums.push(a.amount);
-    for (const p of m.amountsFromDetail?.paxAmounts ?? []) if (typeof p.amount === "number") nums.push(p.amount);
     for (const r of m.rates ?? [])
       for (const d of r.rateDetails ?? []) if (typeof d.totalAmount === "number") nums.push(d.totalAmount);
   }
   return nums.length ? Math.min(...nums) : null;
 }
 
+function activityGeo(a: RawActivity): { latitude?: number; longitude?: number } | undefined {
+  return (
+    a.geolocation ??
+    a.content?.location?.geolocation ??
+    a.content?.location?.startingPoints?.[0]?.meetingPoint?.geolocation
+  );
+}
+
+/** Content descriptions may carry HTML — plain text only on our cards. */
+function stripTags(s: string): string {
+  return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOffer[] {
   const offers: AttractionOffer[] = [];
   for (const a of raw) {
-    const code = a.code;
-    const name = typeof a.name === "string" ? a.name : a.name?.content;
+    const code = a.code ?? a.activityCode;
+    const name =
+      a.content?.name ?? (typeof a.name === "string" ? a.name : a.name?.content);
     const fromPrice = firstPrice(a);
     if (!code || !name || fromPrice == null) continue; // never fabricate a price
-    const durMin =
-      a.content?.duration?.metric?.toLowerCase().startsWith("hour")
-        ? Math.round((a.content.duration.value ?? 0) * 60)
-        : a.content?.duration?.value;
+    const dur = a.content?.duration ?? a.modalities?.[0]?.duration;
+    const durMin = dur?.metric?.toLowerCase().startsWith("hour")
+      ? Math.round((dur.value ?? 0) * 60)
+      : dur?.metric?.toLowerCase().startsWith("day")
+        ? Math.round((dur.value ?? 0) * 60 * 24)
+        : dur?.value;
+    const geo = activityGeo(a);
     const distanceKm =
       typeof query.latitude === "number" &&
       typeof query.longitude === "number" &&
-      typeof a.geolocation?.latitude === "number" &&
-      typeof a.geolocation?.longitude === "number"
+      typeof geo?.latitude === "number" &&
+      typeof geo?.longitude === "number"
         ? Math.round(
-            haversineKm(query.latitude, query.longitude, a.geolocation.latitude, a.geolocation.longitude) * 10,
+            haversineKm(query.latitude, query.longitude, geo.latitude, geo.longitude) * 10,
           ) / 10
         : undefined;
+    const description = a.content?.description ? stripTags(a.content.description) : "";
     offers.push({
       id: `hb-${code}`,
       name,
       category: toCategory(a),
       durationMinutes: typeof durMin === "number" && durMin > 0 ? durMin : undefined,
-      fromPrice,
-      currency: a.currency ?? "EUR",
+      fromPrice: Math.round(fromPrice),
+      currency: a.currencyName ?? a.currency ?? "EUR",
       distanceKm,
       // summary comes from the content description when present; the model
       // rewrites it into the reply language when authoring the block.
-      summary: a.content?.description?.slice(0, 140) || undefined,
+      summary: description ? description.slice(0, 140) : undefined,
     });
   }
   offers.sort((a, b) => a.fromPrice - b.fromPrice); // cheapest first
@@ -193,6 +235,11 @@ type FetchResult = {
 };
 
 async function fetchActivities(query: AttractionQuery, key: string): Promise<FetchResult> {
+  // Request shape per the docs + a working integration (2026-07-22 research):
+  // the availability path carries the /availability suffix, the GPS filter is
+  // EXACTLY {type,latitude,longitude} (Activities has NO radius/unit — the API
+  // scopes by the containing destination), paxes is MANDATORY, filters cannot
+  // mix gps with destination.
   const body = {
     filters: [
       {
@@ -201,8 +248,6 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
             type: "gps",
             latitude: query.latitude,
             longitude: query.longitude,
-            radius: SEARCH_RADIUS_M,
-            unit: "m",
           },
         ],
       },
@@ -217,7 +262,7 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${HOTELBEDS_BASE_URL}/activity-api/3.0/activities`, {
+    const res = await fetch(`${HOTELBEDS_BASE_URL}/activity-api/3.0/activities/availability`, {
       method: "POST",
       headers: activitiesHeaders(),
       body: JSON.stringify(body),
