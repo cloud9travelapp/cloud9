@@ -367,6 +367,12 @@ export async function getHotelNameIndex(
  * A hotel's content: permanent cache first, Content API on miss. Returns null
  * on any failure — the modal shows a graceful "details unavailable" state.
  */
+// In-flight dedup: concurrent requests for the same hotel (card gallery +
+// modal open within seconds — a real diag showed hotel 318933 fetched twice in
+// 3s) share ONE live fetch instead of burning quota twice. Module-level, so it
+// holds per warm serverless instance — exactly the same-user race it targets.
+const inflightHotelContent = new Map<string, Promise<HotelContent | null>>();
+
 export async function getHotelbedsContent(
   hotelCode: string,
 ): Promise<HotelContent | null> {
@@ -376,6 +382,18 @@ export async function getHotelbedsContent(
   if (cached && (cached as HotelContent).v === CONTENT_VERSION) {
     return cached as HotelContent;
   }
+  const inflight = inflightHotelContent.get(hotelCode);
+  if (inflight) return inflight;
+  const p = fetchHotelbedsContentLive(hotelCode).finally(() =>
+    inflightHotelContent.delete(hotelCode),
+  );
+  inflightHotelContent.set(hotelCode, p);
+  return p;
+}
+
+async function fetchHotelbedsContentLive(
+  hotelCode: string,
+): Promise<HotelContent | null> {
   try {
     const res = await fetch(
       `${HOTELBEDS_BASE_URL}/hotel-content-api/1.0/hotels/${encodeURIComponent(hotelCode)}/details?language=ENG&useSecondaryLanguage=false`,

@@ -68,10 +68,11 @@ async function cachePut(key: string, offers: AttractionOffer[]): Promise<void> {
   }
 }
 
-/** Live Activities calls today ≈ rows written since UTC midnight across BOTH
- *  the search cache ("hba1|") and the content cache (each live search/content
- *  call writes exactly one row). Guards search AND content against the shared
- *  50/day Activities quota. */
+/** Live Activities calls today, against the shared 50/day quota. Each live
+ *  SEARCH costs TWO calls (availability + the batched content prefetch), and
+ *  each writes one "hba…" search row → count those rows double. Single-code
+ *  content fallbacks (src:"single") cost one call each; batch-written content
+ *  rows (src:"batch") ride the search's second call and must NOT add more. */
 async function liveCallsToday(): Promise<number> {
   try {
     const midnight = new Date();
@@ -86,9 +87,10 @@ async function liveCallsToday(): Promise<number> {
       admin
         .from("attraction_content_cache")
         .select("code", { count: "exact", head: true })
+        .eq("content->>src", "single")
         .gte("created_at", midnight.toISOString()),
     ]);
-    return (search.count ?? 0) + (content.count ?? 0);
+    return (search.count ?? 0) * 2 + (content.count ?? 0);
   } catch {
     return 0;
   }
@@ -251,6 +253,7 @@ type FetchResult = {
   firstKeys: string[];
   rawSample: string; // TEMP verbose — remove once the mapping is confirmed
   quotaHeaders: Record<string, string>;
+  contentPrefetched: number;
 };
 
 /** Any quota/rate-limit-ish response headers — the docs document neither the
@@ -315,6 +318,12 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       console.error("mapActivities threw:", mapErr);
     }
     await cachePut(key, offers);
+    // Batch-prefetch the stack's content (images/descriptions) in ONE call —
+    // cards and the modal then read the permanent cache instead of firing a
+    // live call each. Best-effort; the single-code fallback covers misses.
+    const contentPrefetched = await prefetchActivityContent(
+      offers.map((o) => o.id.slice(3)),
+    );
     return {
       offers,
       status: res.status,
@@ -324,6 +333,7 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       firstKeys: rawActivities[0] ? Object.keys(rawActivities[0]) : [],
       rawSample: rawText.slice(0, 2000),
       quotaHeaders: quotaishHeaders(res),
+      contentPrefetched,
     };
   } finally {
     clearTimeout(timer);
@@ -373,6 +383,7 @@ export async function hotelbedsSearchAttractions(
       firstKeys: r.firstKeys,
       rawSample: r.rawSample, // TEMP — remove once mapping is confirmed
       quotaHeaders: r.quotaHeaders,
+      contentPrefetched: r.contentPrefetched,
       ms: Date.now() - t0,
     });
     // Honest: a genuine empty live result returns [] (the concierge says
@@ -404,7 +415,18 @@ export async function hotelbedsPeekAttractions(
 // ── Content (images + description) — permanent cache (attraction_content_cache),
 // mirroring the stays content path. Content-403 (quota) → null, and the modal/
 // card show the same honest "couldn't load" fallback as stays.
-export type ActivityContent = { images: string[]; description?: string; included?: string[] };
+// Endpoint (confirmed against the docs): the MULTI request —
+//   POST /activity-content-api/3.0/activities/  { language, codes:[{activityCode}] }
+//   → { activitiesContent: [...] }
+// One batched call fetches a whole card stack's content (the simple GET needs a
+// modality code we don't track). src on each cached row marks how it was
+// fetched ("batch" at search time | "single" fallback) for quota accounting.
+export type ActivityContent = {
+  images: string[];
+  description?: string;
+  included?: string[];
+  src?: "batch" | "single";
+};
 
 /** Pull image URLs out of the various shapes Hotelbeds content can use
  *  (media/images arrays with path/url/urls). Defensive; confirmed on first call. */
@@ -428,6 +450,100 @@ function extractImages(node: unknown): string[] {
   return [...new Set(urls)].slice(0, 12);
 }
 
+/** Map one raw activitiesContent[] item to our ActivityContent. */
+function mapActivityContentItem(item: Record<string, unknown>): ActivityContent {
+  const content: ActivityContent = { images: extractImages(item) };
+  const nested = item.content as Record<string, unknown> | undefined;
+  const description = (nested?.description ?? item.description) as string | undefined;
+  if (typeof description === "string" && description.trim()) {
+    content.description = stripTags(description);
+  }
+  return content;
+}
+
+/**
+ * ONE multi-request Content call for any number of activity codes (the
+ * documented batch form) → { code: content }. Instrumented like the hotels
+ * path: activity_content_http on failure (status + quota headers + raw sample),
+ * activity_content_fields on the first success (raw shape for mapping tuning).
+ */
+async function fetchActivityContentMulti(
+  codes: string[],
+): Promise<Record<string, ActivityContent>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${HOTELBEDS_BASE_URL}/activity-content-api/3.0/activities/`, {
+      method: "POST",
+      headers: activitiesHeaders(),
+      body: JSON.stringify({
+        language: "en",
+        codes: codes.map((activityCode) => ({ activityCode })),
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const rawText = await res.text();
+    if (!res.ok) {
+      await logDiag("activity_content_http", {
+        status: res.status,
+        codes: codes.length,
+        headers: quotaishHeaders(res),
+        rawSample: rawText.slice(0, 500),
+      });
+      throw new Error(`Activity content failed: HTTP ${res.status}`);
+    }
+    const data = JSON.parse(rawText) as { activitiesContent?: Array<Record<string, unknown>> };
+    const items = Array.isArray(data.activitiesContent) ? data.activitiesContent : [];
+    if (items[0]) {
+      await logDiag("activity_content_fields", {
+        requested: codes.length,
+        got: items.length,
+        fields: Object.keys(items[0]),
+        sample: JSON.stringify(items[0]).slice(0, 600),
+      });
+    }
+    const byCode: Record<string, ActivityContent> = {};
+    for (const item of items) {
+      const code = (item.activityCode ?? item.code) as string | undefined;
+      if (code) byCode[code] = mapActivityContentItem(item);
+    }
+    return byCode;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Batch-prefetch a card stack's content in ONE quota call at search time and
+ *  cache it permanently — cards/modal then read the cache (no per-card live
+ *  calls). Best-effort: a failure just means the per-card fallback path runs. */
+async function prefetchActivityContent(codes: string[]): Promise<number> {
+  if (!codes.length) return 0;
+  try {
+    const byCode = await fetchActivityContentMulti(codes);
+    const now = new Date().toISOString();
+    const rows = Object.entries(byCode).map(([code, content]) => ({
+      provider: "hotelbeds",
+      code,
+      content: { ...content, src: "batch" as const },
+      created_at: now,
+    }));
+    if (rows.length) {
+      await getSupabaseAdmin().from("attraction_content_cache").upsert(rows);
+    }
+    return rows.length;
+  } catch (err) {
+    console.error("Activity content prefetch failed:", err);
+    return 0;
+  }
+}
+
+// In-flight dedup: concurrent requests for the same code (card gallery + modal
+// open within seconds) share ONE fetch instead of burning quota twice. Module-
+// level, so it holds per warm serverless instance — exactly the same-user,
+// same-interaction race it exists for.
+const inflightContent = new Map<string, Promise<ActivityContent | null>>();
+
 export async function hotelbedsActivityContent(code: string): Promise<ActivityContent | null> {
   // cache-first (permanent)
   try {
@@ -441,41 +557,39 @@ export async function hotelbedsActivityContent(code: string): Promise<ActivityCo
   } catch {
     /* miss → fetch */
   }
-  try {
-    activitiesHeaders();
-    if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
-      await logDiag("attractions_quota_fallback", { path: "content", code });
-      return null; // honest: content unavailable (the modal shows the note)
+  const inflight = inflightContent.get(code);
+  if (inflight) return inflight;
+  const p = (async (): Promise<ActivityContent | null> => {
+    try {
+      activitiesHeaders();
+      if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
+        await logDiag("attractions_quota_fallback", { path: "content", code });
+        return null; // honest: content unavailable (the modal shows the note)
+      }
+      const content = (await fetchActivityContentMulti([code]))[code] ?? null;
+      if (content) {
+        await getSupabaseAdmin()
+          .from("attraction_content_cache")
+          .upsert({
+            provider: "hotelbeds",
+            code,
+            content: { ...content, src: "single" as const },
+            created_at: new Date().toISOString(),
+          });
+      }
+      return content;
+    } catch (err) {
+      console.error("Hotelbeds activity content failed:", err);
+      await logDiag("content_api_error", {
+        provider: "hotelbeds-activity",
+        code,
+        message: String(err).slice(0, 300),
+      });
+      return null;
+    } finally {
+      inflightContent.delete(code);
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(
-      `${HOTELBEDS_BASE_URL}/activity-content-api/1.0/activities/${encodeURIComponent(code)}?language=en`,
-      { headers: activitiesHeaders(), cache: "no-store", signal: controller.signal },
-    ).finally(() => clearTimeout(timer));
-    if (!res.ok) throw new Error(`Activity content failed: HTTP ${res.status}`);
-    const data = (await res.json()) as Record<string, unknown>;
-    const activity = (data.activityContent ?? data.activity ?? data) as Record<string, unknown>;
-    await logDiag("activity_content_fields", {
-      code,
-      fields: Object.keys(activity),
-      sample: JSON.stringify(activity).slice(0, 500),
-    });
-    const content: ActivityContent = { images: extractImages(activity) };
-    const contentNode = activity.content as Record<string, unknown> | undefined;
-    const description = (contentNode?.description ?? activity.description) as string | undefined;
-    if (typeof description === "string" && description.trim()) content.description = description;
-    await getSupabaseAdmin()
-      .from("attraction_content_cache")
-      .upsert({ provider: "hotelbeds", code, content, created_at: new Date().toISOString() });
-    return content;
-  } catch (err) {
-    console.error("Hotelbeds activity content failed:", err);
-    await logDiag("content_api_error", {
-      provider: "hotelbeds-activity",
-      code,
-      message: String(err).slice(0, 300),
-    });
-    return null;
-  }
+  })();
+  inflightContent.set(code, p);
+  return p;
 }
