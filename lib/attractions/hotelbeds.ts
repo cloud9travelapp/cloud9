@@ -28,9 +28,11 @@ const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
+// Key prefix carries a GENERATION ("hba2" since the currency-normalization fix)
+// so a mapping change can invalidate stale cached offers without a migration.
 function cacheKey(query: AttractionQuery): string {
   return [
-    "hba1",
+    "hba2",
     (query.latitude ?? 0).toFixed(2),
     (query.longitude ?? 0).toFixed(2),
     query.from,
@@ -79,7 +81,7 @@ async function liveCallsToday(): Promise<number> {
       admin
         .from("attraction_search_cache")
         .select("key", { count: "exact", head: true })
-        .like("key", "hba1|%")
+        .like("key", "hba%") // all key generations count against the quota
         .gte("created_at", midnight.toISOString()),
       admin
         .from("attraction_content_cache")
@@ -182,6 +184,22 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/** The API's currencyName is a WORD ("Euro", "US Dollar") — normalize to the
+ *  ISO code our money() formatting expects; 3-letter codes pass through. */
+function normalizeCurrency(raw: string | undefined): string {
+  if (!raw) return "EUR";
+  const v = raw.trim();
+  if (/^[A-Z]{3}$/.test(v)) return v;
+  const byName: Record<string, string> = {
+    euro: "EUR",
+    "us dollar": "USD",
+    dollar: "USD",
+    "pound sterling": "GBP",
+    pound: "GBP",
+  };
+  return byName[v.toLowerCase()] ?? v.toUpperCase().slice(0, 3);
+}
+
 function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOffer[] {
   const offers: AttractionOffer[] = [];
   for (const a of raw) {
@@ -213,7 +231,7 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
       category: toCategory(a),
       durationMinutes: typeof durMin === "number" && durMin > 0 ? durMin : undefined,
       fromPrice: Math.round(fromPrice),
-      currency: a.currencyName ?? a.currency ?? "EUR",
+      currency: normalizeCurrency(a.currencyName ?? a.currency),
       distanceKm,
       // summary comes from the content description when present; the model
       // rewrites it into the reply language when authoring the block.
