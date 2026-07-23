@@ -424,12 +424,36 @@ export async function hotelbedsPeekAttractions(
 export type ActivityContent = {
   images: string[];
   description?: string;
-  included?: string[];
+  included?: string[]; // "what's included" — from featureGroups' included items
+  excluded?: string[]; // featureGroups' excluded items (cached for later use)
+  highlights?: string[]; // from the API's "highligths" (their spelling)
   src?: "batch" | "single";
+  /** Content-shape version — bump when the mapper changes so previously cached
+   *  rows (e.g. the image-less first generation) refetch ONCE. Mirrors the
+   *  hotels CONTENT_VERSION pattern. */
+  v?: number;
 };
+const ACTIVITY_CONTENT_VERSION = 2;
 
-/** Pull image URLs out of the various shapes Hotelbeds content can use
- *  (media/images arrays with path/url/urls). Defensive; confirmed on first call. */
+/** Pull image URLs out of the various shapes Hotelbeds content can use.
+ *  Accepts absolute URLs under url/path/urls/resource/src/href (the Activities
+ *  content commonly carries them under `resource` inside media image sizes),
+ *  and image-file relative paths under the same keys (prefixed with the same
+ *  photos host the hotels content uses). The unabridged media-shape diag
+ *  confirms/refines this against reality. */
+const URL_KEYS = new Set(["url", "path", "urls", "resource", "src", "href"]);
+const ACTIVITY_PHOTO_BASE = "https://photos.hotelbeds.com/giata/";
+
+function asImageUrl(val: string): string | null {
+  if (/^https?:\/\//.test(val)) return val;
+  if (/^\/\//.test(val)) return `https:${val}`;
+  // relative image path ("act/123/photo.jpg") → same photos host as hotels
+  if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(val) && !/\s/.test(val)) {
+    return `${ACTIVITY_PHOTO_BASE}${val.replace(/^\//, "")}`;
+  }
+  return null;
+}
+
 function extractImages(node: unknown): string[] {
   const urls: string[] = [];
   const walk = (v: unknown) => {
@@ -437,10 +461,16 @@ function extractImages(node: unknown): string[] {
     if (Array.isArray(v)) return v.forEach(walk);
     const o = v as Record<string, unknown>;
     for (const [k, val] of Object.entries(o)) {
-      if ((k === "url" || k === "path") && typeof val === "string" && /^https?:\/\//.test(val)) {
-        urls.push(val);
+      if (URL_KEYS.has(k) && typeof val === "string") {
+        const u = asImageUrl(val);
+        if (u) urls.push(u);
       } else if (k === "urls" && Array.isArray(val)) {
-        for (const u of val) if (typeof u === "string" && /^https?:\/\//.test(u)) urls.push(u);
+        for (const u of val) {
+          if (typeof u === "string") {
+            const abs = asImageUrl(u);
+            if (abs) urls.push(abs);
+          }
+        }
       } else {
         walk(val);
       }
@@ -450,14 +480,55 @@ function extractImages(node: unknown): string[] {
   return [...new Set(urls)].slice(0, 12);
 }
 
-/** Map one raw activitiesContent[] item to our ActivityContent. */
+/** Collect display strings out of loosely-shaped API list items (strings or
+ *  objects with name/description/text). Defensive; tags stripped. */
+function collectStrings(node: unknown, cap: number): string[] {
+  const out: string[] = [];
+  const push = (s: unknown) => {
+    if (typeof s === "string" && s.trim() && out.length < cap) {
+      const clean = stripTags(s);
+      if (clean && !out.includes(clean)) out.push(clean);
+    }
+  };
+  const walk = (v: unknown) => {
+    if (out.length >= cap) return;
+    if (typeof v === "string") return push(v);
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      push(o.description ?? o.name ?? o.text);
+      // dig into nested group arrays (featureGroups → included → …)
+      for (const val of Object.values(o)) if (Array.isArray(val)) walk(val);
+    }
+  };
+  walk(node);
+  return out;
+}
+
+/** Map one raw activitiesContent[] item to our ActivityContent. Images come
+ *  from the item's media subtree when present (the whole item as fallback) so
+ *  voucher/redeem links never land in the gallery. */
 function mapActivityContentItem(item: Record<string, unknown>): ActivityContent {
-  const content: ActivityContent = { images: extractImages(item) };
+  const content: ActivityContent = {
+    images: extractImages(item.media ?? item),
+    v: ACTIVITY_CONTENT_VERSION,
+  };
   const nested = item.content as Record<string, unknown> | undefined;
   const description = (nested?.description ?? item.description) as string | undefined;
   if (typeof description === "string" && description.trim()) {
     content.description = stripTags(description);
   }
+  // featureGroups carry ready-made included/excluded lists (Guide, Bike rental,
+  // Train tickets…); "highligths" is the API's own spelling.
+  const groups = item.featureGroups as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(groups)) {
+    const included = collectStrings(groups.map((g) => g.included).filter(Boolean), 8);
+    const excluded = collectStrings(groups.map((g) => g.excluded).filter(Boolean), 8);
+    if (included.length) content.included = included;
+    if (excluded.length) content.excluded = excluded;
+  }
+  const highlights = collectStrings(item.highligths ?? item.highlights, 6);
+  if (highlights.length) content.highlights = highlights;
   return content;
 }
 
@@ -502,6 +573,16 @@ async function fetchActivityContentMulti(
         fields: Object.keys(items[0]),
         sample: JSON.stringify(items[0]).slice(0, 600),
       });
+      // TEMP: the media node of ONE activity, unabridged (6000-char safety cap
+      // — one activity's media fits well under it) so the image-URL shape is
+      // confirmed against reality. Remove once galleries are verified.
+      if (items[0].media !== undefined) {
+        await logDiag("activity_media_shape", {
+          code: items[0].activityCode ?? items[0].code,
+          media: JSON.stringify(items[0].media).slice(0, 6000),
+          extracted: extractImages(items[0].media).slice(0, 3),
+        });
+      }
     }
     const byCode: Record<string, ActivityContent> = {};
     for (const item of items) {
@@ -545,7 +626,9 @@ async function prefetchActivityContent(codes: string[]): Promise<number> {
 const inflightContent = new Map<string, Promise<ActivityContent | null>>();
 
 export async function hotelbedsActivityContent(code: string): Promise<ActivityContent | null> {
-  // cache-first (permanent)
+  // cache-first (permanent). A row from an older content shape (missing or
+  // lower v — e.g. the image-less first generation) is a miss ONCE; the
+  // refetched row carries the current version, so this can't loop.
   try {
     const { data } = await getSupabaseAdmin()
       .from("attraction_content_cache")
@@ -553,7 +636,8 @@ export async function hotelbedsActivityContent(code: string): Promise<ActivityCo
       .eq("provider", "hotelbeds")
       .eq("code", code)
       .single();
-    if (data?.content) return data.content as ActivityContent;
+    const cached = data?.content as ActivityContent | undefined;
+    if (cached && cached.v === ACTIVITY_CONTENT_VERSION) return cached;
   } catch {
     /* miss → fetch */
   }

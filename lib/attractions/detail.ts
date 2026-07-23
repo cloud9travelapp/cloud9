@@ -21,6 +21,7 @@ export async function getAttractionDetail(
       images: content?.images ?? [],
       description: content?.description,
       included: content?.included,
+      highlights: content?.highlights,
       // content===null → the Content call failed (403 quota / error), not "no
       // photos" — drives the honest modal note (same as stays).
       contentUnavailable: !content,

@@ -20,6 +20,7 @@ const T = {
   he: {
     from: "החל מ־",
     perPerson: "לאדם",
+    highlights: "עיקרי החוויה",
     whatsIncluded: "מה כלול",
     close: "סגירה",
     heart: "שמור למועדפים",
@@ -33,6 +34,7 @@ const T = {
   en: {
     from: "from",
     perPerson: "per person",
+    highlights: "Highlights",
     whatsIncluded: "What's included",
     close: "Close",
     heart: "Save to favorites",
@@ -214,6 +216,20 @@ export function AttractionDetailModal({
 
               {detail.description ? (
                 <p dir="auto" className="mt-3 text-sm leading-relaxed text-c-muted">{detail.description}</p>
+              ) : null}
+
+              {detail.highlights && detail.highlights.length > 0 ? (
+                <div className="mt-4">
+                  <h3 dir="auto" className="font-display text-base font-bold text-c-ink">{L.highlights}</h3>
+                  <ul dir="auto" className="mt-2 flex flex-col gap-1.5">
+                    {detail.highlights.map((item) => (
+                      <li key={item} className="flex items-start gap-2 text-sm text-c-muted">
+                        <span aria-hidden className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-c-accent" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
 
               {detail.included && detail.included.length > 0 ? (
