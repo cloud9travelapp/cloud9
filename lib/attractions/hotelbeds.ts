@@ -181,9 +181,22 @@ function activityGeo(a: RawActivity): { latitude?: number; longitude?: number } 
   );
 }
 
-/** Content descriptions may carry HTML — plain text only on our cards. */
+/** Content descriptions may carry HTML — plain text only on our cards. Tags
+ *  removed, then common entities decoded ("Lakes &amp; Mountain" leaked raw
+ *  in a live modal); &amp; is decoded LAST so chains can't double-decode. */
 function stripTags(s: string): string {
-  return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&(apos|#0?39);/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** The API's currencyName is a WORD ("Euro", "US Dollar") — normalize to the
@@ -422,7 +435,8 @@ export async function hotelbedsPeekAttractions(
 // modality code we don't track). src on each cached row marks how it was
 // fetched ("batch" at search time | "single" fallback) for quota accounting.
 export type ActivityContent = {
-  images: string[];
+  images: string[]; // gallery-size URLs (XLARGE-preferred) — the modal
+  thumbs?: string[]; // card-size URLs (LARGE2-preferred) — keeps mobile light
   description?: string;
   included?: string[]; // "what's included" — from featureGroups' included items
   excluded?: string[]; // featureGroups' excluded items (cached for later use)
@@ -433,7 +447,7 @@ export type ActivityContent = {
    *  hotels CONTENT_VERSION pattern. */
   v?: number;
 };
-const ACTIVITY_CONTENT_VERSION = 2;
+const ACTIVITY_CONTENT_VERSION = 3; // v3: structured media.images[].urls[] extraction
 
 /** Pull image URLs out of the various shapes Hotelbeds content can use.
  *  Accepts absolute URLs under url/path/urls/resource/src/href (the Activities
@@ -464,20 +478,46 @@ function extractImages(node: unknown): string[] {
       if (URL_KEYS.has(k) && typeof val === "string") {
         const u = asImageUrl(val);
         if (u) urls.push(u);
-      } else if (k === "urls" && Array.isArray(val)) {
-        for (const u of val) {
-          if (typeof u === "string") {
-            const abs = asImageUrl(u);
-            if (abs) urls.push(abs);
-          }
-        }
       } else {
-        walk(val);
+        walk(val); // arrays of size-variant objects included — recurse into all
       }
     }
   };
   walk(node);
   return [...new Set(urls)].slice(0, 12);
+}
+
+// ── Structured media extraction (shape confirmed from a live activity):
+// media.images[] each { visualizationOrder, mimeType, language, urls[] };
+// urls[] = one entry per SIZE VARIANT of the SAME image, each
+// { dpi, height, width, resource (absolute URL), sizeType }. Pick ONE variant
+// per image by sizeType preference so one photo never becomes six slides.
+type MediaSizeUrl = { sizeType?: string; resource?: string };
+type MediaImage = { visualizationOrder?: number; urls?: MediaSizeUrl[] };
+
+const MODAL_SIZES = ["XLARGE", "LARGE2", "LARGE", "RAW", "MEDIUM"]; // gallery
+const CARD_SIZES = ["LARGE2", "LARGE", "XLARGE", "RAW", "MEDIUM"]; // thumbs
+
+export function extractActivityImages(media: unknown, sizePreference: string[]): string[] {
+  const images = (media as { images?: MediaImage[] } | undefined)?.images;
+  if (!Array.isArray(images)) return [];
+  const sorted = [...images].sort(
+    (a, b) => (a.visualizationOrder ?? 99) - (b.visualizationOrder ?? 99),
+  );
+  const out: string[] = [];
+  for (const img of sorted) {
+    const urls = Array.isArray(img.urls) ? img.urls : [];
+    const valid = (u: MediaSizeUrl) =>
+      typeof u.resource === "string" && /^https?:\/\//.test(u.resource);
+    let pick: string | undefined;
+    for (const size of sizePreference) {
+      pick = urls.find((u) => u.sizeType === size && valid(u))?.resource;
+      if (pick) break;
+    }
+    if (!pick) pick = urls.find(valid)?.resource; // any size beats no image
+    if (pick && !out.includes(pick)) out.push(pick);
+  }
+  return out.slice(0, 12);
 }
 
 /** Collect display strings out of loosely-shaped API list items (strings or
@@ -506,11 +546,15 @@ function collectStrings(node: unknown, cap: number): string[] {
 }
 
 /** Map one raw activitiesContent[] item to our ActivityContent. Images come
- *  from the item's media subtree when present (the whole item as fallback) so
- *  voucher/redeem links never land in the gallery. */
+ *  from the structured media.images[].urls[] shape (one size variant per
+ *  image); the generic walker over the media subtree is the fallback for any
+ *  differently-shaped item. */
 function mapActivityContentItem(item: Record<string, unknown>): ActivityContent {
+  const gallery = extractActivityImages(item.media, MODAL_SIZES);
+  const thumbs = extractActivityImages(item.media, CARD_SIZES);
   const content: ActivityContent = {
-    images: extractImages(item.media ?? item),
+    images: gallery.length ? gallery : extractImages(item.media),
+    ...(thumbs.length ? { thumbs } : {}),
     v: ACTIVITY_CONTENT_VERSION,
   };
   const nested = item.content as Record<string, unknown> | undefined;

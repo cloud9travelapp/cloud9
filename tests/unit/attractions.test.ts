@@ -124,3 +124,31 @@ describe("attractions block parsing", () => {
     expect(sortAttractionOffers(v, "distance").map((o) => o.id)).toEqual(["b", "a"]);
   });
 });
+
+describe("extractActivityImages (confirmed live media shape)", async () => {
+  const { extractActivityImages } = await import("@/lib/attractions/hotelbeds");
+  const url = (n: number, size: string) =>
+    `https://media.activitiesbank.com/30465/ENG/${size}/30465_${n}.jpg`;
+  const img = (n: number, order: number) => ({
+    visualizationOrder: order,
+    mimeType: "image/jpeg",
+    language: "ENG",
+    urls: ["SMALL", "MEDIUM", "LARGE", "LARGE2", "XLARGE", "RAW"].map((sizeType) => ({
+      dpi: 72, height: 75, width: 100, sizeType, resource: url(n, sizeType),
+    })),
+  });
+  const media = { images: [img(2, 2), img(1, 1), img(3, 3)] };
+
+  it("picks ONE preferred size per image, ordered by visualizationOrder", () => {
+    const out = extractActivityImages(media, ["XLARGE", "LARGE2"]);
+    expect(out).toEqual([url(1, "XLARGE"), url(2, "XLARGE"), url(3, "XLARGE")]);
+  });
+  it("falls down the preference list, then to any size", () => {
+    const partial = { images: [{ visualizationOrder: 1, urls: [{ sizeType: "MEDIUM", resource: url(9, "MEDIUM") }] }] };
+    expect(extractActivityImages(partial, ["XLARGE", "LARGE2"])).toEqual([url(9, "MEDIUM")]);
+  });
+  it("returns [] for absent/misshapen media", () => {
+    expect(extractActivityImages(undefined, ["XLARGE"])).toEqual([]);
+    expect(extractActivityImages({}, ["XLARGE"])).toEqual([]);
+  });
+});

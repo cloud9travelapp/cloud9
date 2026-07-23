@@ -38,7 +38,9 @@ export async function getAttractionImages(
   attractionId: string,
 ): Promise<string[]> {
   if (attractionId.startsWith("hb-")) {
-    return (await hotelbedsActivityContent(attractionId.slice(3)))?.images ?? [];
+    const content = await hotelbedsActivityContent(attractionId.slice(3));
+    // Cards prefer the lighter thumb variants (LARGE2); gallery sizes fallback.
+    return content?.thumbs?.length ? content.thumbs : (content?.images ?? []);
   }
   return (await mockAttractionDetail(attractionId)).images;
 }
