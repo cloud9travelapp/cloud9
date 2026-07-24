@@ -264,7 +264,6 @@ type FetchResult = {
   activityCount: number;
   mapped: number;
   firstKeys: string[];
-  rawSample: string; // TEMP verbose — remove once the mapping is confirmed
   quotaHeaders: Record<string, string>;
   contentPrefetched: number;
 };
@@ -344,7 +343,6 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       activityCount: rawActivities.length,
       mapped: offers.length,
       firstKeys: rawActivities[0] ? Object.keys(rawActivities[0]) : [],
-      rawSample: rawText.slice(0, 2000),
       quotaHeaders: quotaishHeaders(res),
       contentPrefetched,
     };
@@ -394,7 +392,6 @@ export async function hotelbedsSearchAttractions(
       activities: r.activityCount,
       mapped: r.mapped,
       firstKeys: r.firstKeys,
-      rawSample: r.rawSample, // TEMP — remove once mapping is confirmed
       quotaHeaders: r.quotaHeaders,
       contentPrefetched: r.contentPrefetched,
       ms: Date.now() - t0,
@@ -617,16 +614,6 @@ async function fetchActivityContentMulti(
         fields: Object.keys(items[0]),
         sample: JSON.stringify(items[0]).slice(0, 600),
       });
-      // TEMP: the media node of ONE activity, unabridged (6000-char safety cap
-      // — one activity's media fits well under it) so the image-URL shape is
-      // confirmed against reality. Remove once galleries are verified.
-      if (items[0].media !== undefined) {
-        await logDiag("activity_media_shape", {
-          code: items[0].activityCode ?? items[0].code,
-          media: JSON.stringify(items[0].media).slice(0, 6000),
-          extracted: extractImages(items[0].media).slice(0, 3),
-        });
-      }
     }
     const byCode: Record<string, ActivityContent> = {};
     for (const item of items) {
