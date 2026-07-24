@@ -216,6 +216,7 @@ export async function mockSearchAttractions(
     });
   }
 
-  offers.sort((a, b) => a.fromPrice - b.fromPrice); // cheapest first
+  // cheapest first (mock offers are always priced; ?? keeps the type honest)
+  offers.sort((a, b) => (a.fromPrice ?? 0) - (b.fromPrice ?? 0));
   return offers;
 }

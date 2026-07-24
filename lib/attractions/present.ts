@@ -15,7 +15,13 @@ export function sortOffersBy(
   sortBy: AttractionSort,
 ): AttractionOffer[] {
   const s = [...offers];
-  if (sortBy === "price") return s.sort((a, b) => a.fromPrice - b.fromPrice);
+  if (sortBy === "price") {
+    return s.sort(
+      (a, b) =>
+        (a.fromPrice ?? Number.POSITIVE_INFINITY) -
+        (b.fromPrice ?? Number.POSITIVE_INFINITY),
+    );
+  }
   if (sortBy === "duration") {
     return s.sort(
       (a, b) =>
@@ -40,13 +46,22 @@ export function filterForPriceLevel(
   offers: AttractionOffer[],
   level?: PriceLevel,
 ): AttractionOffer[] {
-  if (!level || offers.length < 3) return offers;
-  const sorted = [...offers].sort((a, b) => a.fromPrice - b.fromPrice);
+  if (!level) return offers;
+  // Terciles are computed over the PRICED subset; price-less offers can't be
+  // banded so they ride along after the band (shown honestly, never dropped).
+  const priced = offers.filter((o) => typeof o.fromPrice === "number");
+  const unpriced = offers.filter((o) => typeof o.fromPrice !== "number");
+  if (priced.length < 3) return offers;
+  const sorted = [...priced].sort((a, b) => a.fromPrice! - b.fromPrice!);
   const third = Math.ceil(sorted.length / 3);
-  if (level === "budget") return sorted.slice(0, third);
-  if (level === "premium") return sorted.slice(-third);
-  const mid = sorted.slice(third, sorted.length - third);
-  return mid.length > 0 ? mid : sorted;
+  let band: AttractionOffer[];
+  if (level === "budget") band = sorted.slice(0, third);
+  else if (level === "premium") band = sorted.slice(-third);
+  else {
+    const mid = sorted.slice(third, sorted.length - third);
+    band = mid.length > 0 ? mid : sorted;
+  }
+  return [...band, ...unpriced];
 }
 
 /**

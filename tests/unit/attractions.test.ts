@@ -103,9 +103,24 @@ describe("attractions block parsing", () => {
     expect(attractions?.mock).toBe(true);
   });
 
-  it("rejects malformed offers and missing block", () => {
+  it("accepts an honest PRICE-LESS offer; rejects malformed offers and missing block", () => {
     expect(splitAttractions("just text").attractions).toBeNull();
-    expect(splitAttractions(block([{ name: "no price", category: "tours" }])).attractions).toBeNull();
+    // no fromPrice = a valid price-less offer (the card shows no price line)
+    const noPrice = splitAttractions(block([{ id: "mock-x", name: "Free walk", category: "tours", currency: "EUR" }]));
+    expect(noPrice.attractions?.offers[0].fromPrice).toBeUndefined();
+    // junk fromPrice or missing category still rejects
+    expect(splitAttractions(block([{ name: "bad", category: "tours", fromPrice: "9" as unknown as number }])).attractions).toBeNull();
+    expect(splitAttractions(block([{ name: "no category", fromPrice: 9 }])).attractions).toBeNull();
+  });
+
+  it("price sorts put price-less offers last in BOTH directions", () => {
+    const v: AttractionOfferView[] = [
+      { id: "free", name: "Free", category: "tours", currency: "EUR" },
+      { id: "cheap", name: "Cheap", category: "tours", fromPrice: 10, currency: "EUR" },
+      { id: "dear", name: "Dear", category: "tours", fromPrice: 90, currency: "EUR" },
+    ];
+    expect(sortAttractionOffers(v, "priceAsc").map((o) => o.id)).toEqual(["cheap", "dear", "free"]);
+    expect(sortAttractionOffers(v, "priceDesc").map((o) => o.id)).toEqual(["dear", "cheap", "free"]);
   });
 
   it("collectShownAttractionIds unions ids across blocks", () => {

@@ -35,7 +35,9 @@ export type AttractionOffer = {
   category: AttractionCategory;
   area?: string; // neighbourhood / location proper noun
   durationMinutes?: number; // for the "duration" sort + card display
-  fromPrice: number; // per-person "from" price
+  /** Per-person "from" price. ABSENT when the provider carries no positive
+   *  price — the card then honestly shows no price line (never "0"). */
+  fromPrice?: number;
   currency: string;
   distanceKm?: number; // straight-line km from the searched point
   /** 0–5. DISPLAY-WHEN-PRESENT ONLY — Hotelbeds Activities does not document a

@@ -68,11 +68,18 @@ export function sortAttractionOffers(
   recommendedId?: string,
 ): AttractionOfferView[] {
   const s = [...offers];
+  // Price-less offers sort last in BOTH price directions (no price ≠ cheap).
+  const price = (o: AttractionOfferView, missing: number) =>
+    typeof o.fromPrice === "number" ? o.fromPrice : missing;
   switch (mode) {
     case "priceAsc":
-      return s.sort((a, b) => a.fromPrice - b.fromPrice);
+      return s.sort(
+        (a, b) => price(a, Number.POSITIVE_INFINITY) - price(b, Number.POSITIVE_INFINITY),
+      );
     case "priceDesc":
-      return s.sort((a, b) => b.fromPrice - a.fromPrice);
+      return s.sort(
+        (a, b) => price(b, Number.NEGATIVE_INFINITY) - price(a, Number.NEGATIVE_INFINITY),
+      );
     case "distance":
       return s.sort(
         (a, b) =>
@@ -300,7 +307,8 @@ export function splitAttractions(content: string): {
         !!x &&
         typeof x.name === "string" &&
         typeof x.category === "string" &&
-        typeof x.fromPrice === "number"
+        // fromPrice is optional (an honest price-less offer) but never junk
+        (x.fromPrice === undefined || typeof x.fromPrice === "number")
       );
     });
     if (!offers.length) return { text, attractions: null };

@@ -28,11 +28,11 @@ const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
-// Key prefix carries a GENERATION ("hba2" since the currency-normalization fix)
+// Key prefix carries a GENERATION ("hba3" since the positive-min price fix)
 // so a mapping change can invalidate stale cached offers without a migration.
 function cacheKey(query: AttractionQuery): string {
   return [
-    "hba2",
+    "hba3",
     (query.latitude ?? 0).toFixed(2),
     (query.longitude ?? 0).toFixed(2),
     query.from,
@@ -131,10 +131,15 @@ type RawActivity = {
   currency?: string;
 };
 
+/** Lowest POSITIVE amount — amountsFrom arrives as per-pax-type entries and
+ *  CHILD/INFANT rows are often 0; a bare Math.min turned EVERY card into
+ *  "0 EUR" (live 2026-07-24 finding). 0/absent = no price, never a price. */
 function amountsFromMin(v: RawAmountsFrom | undefined): number | null {
-  if (typeof v === "number") return v;
+  if (typeof v === "number") return v > 0 ? v : null;
   if (Array.isArray(v)) {
-    const nums = v.map((x) => x?.amount).filter((n): n is number => typeof n === "number");
+    const nums = v
+      .map((x) => x?.amount)
+      .filter((n): n is number => typeof n === "number" && n > 0);
     if (nums.length) return Math.min(...nums);
   }
   return null;
@@ -166,9 +171,11 @@ function firstPrice(raw: RawActivity): number | null {
   for (const m of raw.modalities ?? []) {
     const mf = amountsFromMin(m.amountsFrom);
     if (mf != null) nums.push(mf);
-    for (const a of m.amount?.amounts ?? []) if (typeof a.amount === "number") nums.push(a.amount);
+    for (const a of m.amount?.amounts ?? [])
+      if (typeof a.amount === "number" && a.amount > 0) nums.push(a.amount);
     for (const r of m.rates ?? [])
-      for (const d of r.rateDetails ?? []) if (typeof d.totalAmount === "number") nums.push(d.totalAmount);
+      for (const d of r.rateDetails ?? [])
+        if (typeof d.totalAmount === "number" && d.totalAmount > 0) nums.push(d.totalAmount);
   }
   return nums.length ? Math.min(...nums) : null;
 }
@@ -221,8 +228,10 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
     const code = a.code ?? a.activityCode;
     const name =
       a.content?.name ?? (typeof a.name === "string" ? a.name : a.name?.content);
+    if (!code || !name) continue;
+    // No positive price anywhere → an honest PRICE-LESS offer (no price line on
+    // the card) — never print 0 and never fabricate a number.
     const fromPrice = firstPrice(a);
-    if (!code || !name || fromPrice == null) continue; // never fabricate a price
     const dur = a.content?.duration ?? a.modalities?.[0]?.duration;
     const durMin = dur?.metric?.toLowerCase().startsWith("hour")
       ? Math.round((dur.value ?? 0) * 60)
@@ -245,7 +254,7 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
       name,
       category: toCategory(a),
       durationMinutes: typeof durMin === "number" && durMin > 0 ? durMin : undefined,
-      fromPrice: Math.round(fromPrice),
+      ...(fromPrice != null ? { fromPrice: Math.round(fromPrice) } : {}),
       currency: normalizeCurrency(a.currencyName ?? a.currency),
       distanceKm,
       // summary comes from the content description when present; the model
@@ -253,7 +262,12 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
       summary: description ? description.slice(0, 140) : undefined,
     });
   }
-  offers.sort((a, b) => a.fromPrice - b.fromPrice); // cheapest first
+  // cheapest first; price-less offers sort last
+  offers.sort(
+    (a, b) =>
+      (a.fromPrice ?? Number.POSITIVE_INFINITY) -
+      (b.fromPrice ?? Number.POSITIVE_INFINITY),
+  );
   return offers;
 }
 
@@ -328,6 +342,17 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       offers = mapActivities(rawActivities, query);
     } catch (mapErr) {
       console.error("mapActivities threw:", mapErr);
+    }
+    // TEMP: raw price nodes of the first activity (amountsFrom + one modality)
+    // — confirms where real prices live vs the 0-EUR pax-array finding. Remove
+    // once live prices are verified.
+    if (rawActivities[0]) {
+      await logDiag("activity_price_shape", {
+        code: rawActivities[0].code ?? rawActivities[0].activityCode,
+        amountsFrom: JSON.stringify(rawActivities[0].amountsFrom).slice(0, 400),
+        modality0: JSON.stringify(rawActivities[0].modalities?.[0]).slice(0, 800),
+        mappedFromPrice: offers[0]?.fromPrice ?? null,
+      });
     }
     await cachePut(key, offers);
     // Batch-prefetch the stack's content (images/descriptions) in ONE call —

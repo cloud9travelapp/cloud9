@@ -65,7 +65,7 @@ export type AttractionOfferView = {
   category: string; // neutral key, localized in the UI
   area?: string;
   durationMinutes?: number;
-  fromPrice: number; // per-person "from" price
+  fromPrice?: number; // per-person "from" price; absent = no price line (never "0")
   currency: string;
   distanceKm?: number;
   rating?: number; // DISPLAY-WHEN-PRESENT only (never depended on)
@@ -1181,13 +1181,17 @@ export function AttractionCard({
               className="-me-1.5 -mt-1"
             />
           ) : null}
-          <div className="flex items-baseline gap-1">
-            <span className="text-[11px] text-c-muted">{L.from}</span>
-            <span dir="ltr" className="text-lg font-bold text-c-accent tabular-nums">
-              {money(offer.fromPrice, offer.currency)}
-            </span>
-          </div>
-          <div className="text-[11px] text-c-muted">{L.perPerson}</div>
+          {typeof offer.fromPrice === "number" ? (
+            <>
+              <div className="flex items-baseline gap-1">
+                <span className="text-[11px] text-c-muted">{L.from}</span>
+                <span dir="ltr" className="text-lg font-bold text-c-accent tabular-nums">
+                  {money(offer.fromPrice, offer.currency)}
+                </span>
+              </div>
+              <div className="text-[11px] text-c-muted">{L.perPerson}</div>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -1218,7 +1222,11 @@ export function AttractionCard({
           label={L.select}
           onSelect={() =>
             onSelect(
-              `${L.selected}: ${offer.name}${offer.area ? `, ${offer.area}` : ""}, ${L.from} ${money(offer.fromPrice, offer.currency)} ${L.perPerson}`,
+              `${L.selected}: ${offer.name}${offer.area ? `, ${offer.area}` : ""}${
+                typeof offer.fromPrice === "number"
+                  ? `, ${L.from} ${money(offer.fromPrice, offer.currency)} ${L.perPerson}`
+                  : ""
+              }`,
             )
           }
         />

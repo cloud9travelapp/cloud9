@@ -105,7 +105,7 @@ export function AttractionDetailModal({
   category: string;
   area?: string;
   durationMinutes?: number;
-  fromPrice: number;
+  fromPrice?: number; // absent = no price line (never "0")
   currency: string;
   lang: Lang;
   hearted?: boolean;
@@ -208,11 +208,13 @@ export function AttractionDetailModal({
                 <SnapGallery images={detail.images} imgClass="h-44 w-64" slidePx={264} />
               ) : null}
 
-              <p dir="auto" className="mt-3 flex items-baseline gap-1.5 text-c-accent">
-                <span className="text-xs text-c-muted">{L.from}</span>
-                <span dir="ltr" className="text-xl font-bold tabular-nums">{money(fromPrice, currency)}</span>
-                <span className="text-xs text-c-muted">{L.perPerson}</span>
-              </p>
+              {typeof fromPrice === "number" ? (
+                <p dir="auto" className="mt-3 flex items-baseline gap-1.5 text-c-accent">
+                  <span className="text-xs text-c-muted">{L.from}</span>
+                  <span dir="ltr" className="text-xl font-bold tabular-nums">{money(fromPrice, currency)}</span>
+                  <span className="text-xs text-c-muted">{L.perPerson}</span>
+                </p>
+              ) : null}
 
               {detail.description ? (
                 <p dir="auto" className="mt-3 text-sm leading-relaxed text-c-muted">{detail.description}</p>
@@ -251,7 +253,13 @@ export function AttractionDetailModal({
               <button
                 type="button"
                 onClick={() =>
-                  onSelect(`${L.selected}: ${name}${area ? `, ${area}` : ""}, ${L.from} ${money(fromPrice, currency)} ${L.perPerson}`)
+                  onSelect(
+                    `${L.selected}: ${name}${area ? `, ${area}` : ""}${
+                      typeof fromPrice === "number"
+                        ? `, ${L.from} ${money(fromPrice, currency)} ${L.perPerson}`
+                        : ""
+                    }`,
+                  )
                 }
                 className="mt-5 w-full rounded-full bg-c-accent px-4 py-2.5 text-sm font-semibold text-c-on-accent transition-opacity hover:opacity-90"
               >
