@@ -442,14 +442,21 @@ async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
 
   const key = cacheKey(query);
   const cached = await cacheGet(key);
-  if (cached) return cached;
+  if (cached) {
+    await logDiag("stay_search_trace", {
+      destination: query.destination,
+      source: "cache",
+      count: cached.length,
+    });
+    return cached;
+  }
 
   if ((await liveCallsToday()) >= DAILY_CALL_BUDGET) {
     await logDiag("stays_quota_fallback", { destination: query.destination });
     return mockSearchStays(query);
   }
 
-  return fetchAvailability(
+  const offers = await fetchAvailability(
     {
       geolocation: {
         latitude: query.latitude,
@@ -462,6 +469,15 @@ async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
     key,
     query,
   );
+  // Result-count trace (mirrors attraction_search_trace): "inventory
+  // exhausted"/single-hotel claims become verifiable against reality —
+  // a small ski village genuinely returning 1 hotel is then provably honest.
+  await logDiag("stay_search_trace", {
+    destination: query.destination,
+    source: offers.length > 0 ? "live:real" : "live:empty",
+    count: offers.length,
+  });
+  return offers;
 }
 
 export async function hotelbedsSearchStays(query: StayQuery): Promise<StayOffer[]> {
