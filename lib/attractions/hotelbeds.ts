@@ -28,11 +28,11 @@ const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
-// Key prefix carries a GENERATION ("hba3" since the positive-min price fix)
+// Key prefix carries a GENERATION ("hba4" since the per-person-only from-price)
 // so a mapping change can invalidate stale cached offers without a migration.
 function cacheKey(query: AttractionQuery): string {
   return [
-    "hba3",
+    "hba4",
     (query.latitude ?? 0).toFixed(2),
     (query.longitude ?? 0).toFixed(2),
     query.from,
@@ -122,10 +122,11 @@ type RawActivity = {
   };
   amountsFrom?: RawAmountsFrom;
   modalities?: Array<{
+    name?: string;
     amountsFrom?: RawAmountsFrom;
     duration?: { value?: number; metric?: string };
     amount?: { amounts?: Array<{ amount?: number }> };
-    rates?: Array<{ rateDetails?: Array<{ totalAmount?: number }> }>;
+    rates?: Array<{ rateDetails?: Array<{ totalAmount?: number; paxAmounts?: unknown }> }>;
   }>;
   currencyName?: string;
   currency?: string;
@@ -164,6 +165,11 @@ function toCategory(raw: RawActivity): AttractionCategory {
   return "tours";
 }
 
+/** PER-PERSON from-price ONLY. rateDetails.totalAmount is a BOOKING TOTAL
+ *  (whole party/private group), NOT a per-person price — using it as a
+ *  fallback showed a private-group total labeled "from … per person" (the
+ *  Zurich 225-vs-market finding, 2026-07-24). An activity whose only prices
+ *  are group totals gets an honest price-less card instead. */
 function firstPrice(raw: RawActivity): number | null {
   const top = amountsFromMin(raw.amountsFrom);
   if (top != null) return top;
@@ -173,9 +179,6 @@ function firstPrice(raw: RawActivity): number | null {
     if (mf != null) nums.push(mf);
     for (const a of m.amount?.amounts ?? [])
       if (typeof a.amount === "number" && a.amount > 0) nums.push(a.amount);
-    for (const r of m.rates ?? [])
-      for (const d of r.rateDetails ?? [])
-        if (typeof d.totalAmount === "number" && d.totalAmount > 0) nums.push(d.totalAmount);
   }
   return nums.length ? Math.min(...nums) : null;
 }
@@ -343,15 +346,25 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
     } catch (mapErr) {
       console.error("mapActivities threw:", mapErr);
     }
-    // TEMP: raw price nodes of the first activity (amountsFrom + one modality)
-    // — confirms where real prices live vs the 0-EUR pax-array finding. Remove
-    // once live prices are verified.
-    if (rawActivities[0]) {
+    // TEMP: per-modality price summary for the first 3 activities — answers
+    // the market-sanity question (private-group totals vs shared per-person
+    // rates: the Zurich 225-vs-market finding). Remove once assessed.
+    for (const a of rawActivities.slice(0, 3)) {
+      const modalities = (a.modalities ?? []).slice(0, 6).map((m) => ({
+        name: (m.name ?? "?").slice(0, 60),
+        perPersonMin: amountsFromMin(m.amountsFrom),
+        rateTotals: (m.rates ?? [])
+          .flatMap((r) => r.rateDetails ?? [])
+          .map((d) => d.totalAmount)
+          .filter((t): t is number => typeof t === "number")
+          .slice(0, 4),
+      }));
       await logDiag("activity_price_shape", {
-        code: rawActivities[0].code ?? rawActivities[0].activityCode,
-        amountsFrom: JSON.stringify(rawActivities[0].amountsFrom).slice(0, 400),
-        modality0: JSON.stringify(rawActivities[0].modalities?.[0]).slice(0, 800),
-        mappedFromPrice: offers[0]?.fromPrice ?? null,
+        code: a.code ?? a.activityCode,
+        name: (typeof a.name === "string" ? a.name : a.content?.name)?.slice(0, 60),
+        topAmountsFromMin: amountsFromMin(a.amountsFrom),
+        modalities,
+        mappedFromPrice: firstPrice(a),
       });
     }
     await cachePut(key, offers);
