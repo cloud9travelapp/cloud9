@@ -1144,11 +1144,16 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
         for (let hop = 0; ; hop++) {
           const msgStream = getAnthropic().messages.stream({
             model: CONCIERGE_MODEL,
-            max_tokens: 4096,
-            // Opus 5: thinking defaults ON; disabled keeps first-token latency
-            // and current stream behavior. disabled is only accepted at effort
-            // <= high, and the API default effort could change — pin it.
-            thinking: { type: "disabled" },
+            // Thinking counts toward max_tokens — leave headroom so a long
+            // think can never truncate the visible reply.
+            max_tokens: 8192,
+            // Opus 5 with thinking DISABLED narrates tool decisions into the
+            // visible stream (verified live twice, surviving two prompt-side
+            // rules — 2026-07-26). Adaptive thinking routes that reasoning
+            // into thinking blocks, which the stream loop never forwards
+            // (text_delta only). Tool hops echo finalMsg.content back intact,
+            // which is exactly what thinking-block replay requires.
+            thinking: { type: "adaptive" },
             output_config: { effort: "high" },
             system: systemBlocks,
             tools: [
