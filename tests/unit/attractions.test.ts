@@ -26,8 +26,12 @@ describe("mockSearchAttractions", () => {
     const b = await mockSearchAttractions(Q);
     expect(a).toEqual(b);
     expect(a.length).toBeGreaterThanOrEqual(9);
-    for (let i = 1; i < a.length; i++) {
-      expect(a[i].fromPrice).toBeGreaterThanOrEqual(a[i - 1].fromPrice);
+    // mock offers always carry a per-person price (fromPrice is optional only
+    // for real-provider group-total-only activities)
+    const prices = a.map((o) => o.fromPrice ?? -1);
+    expect(prices.every((p) => p >= 0)).toBe(true);
+    for (let i = 1; i < prices.length; i++) {
+      expect(prices[i]).toBeGreaterThanOrEqual(prices[i - 1]);
     }
     // known destination surfaces recognisable names + mock- ids + no rating
     expect(a.some((o) => o.name.includes("Colosseum"))).toBe(true);
@@ -42,7 +46,7 @@ describe("mockSearchAttractions", () => {
     const premium = await mockSearchAttractions({ ...Q, priceLevel: "premium" });
     const budget = await mockSearchAttractions({ ...Q, priceLevel: "budget" });
     const avg = (o: AttractionOffer[]) =>
-      o.reduce((s, x) => s + x.fromPrice, 0) / o.length;
+      o.reduce((s, x) => s + (x.fromPrice ?? 0), 0) / o.length;
     expect(avg(premium)).toBeGreaterThan(avg(budget));
   });
 
