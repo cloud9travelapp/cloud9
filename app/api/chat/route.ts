@@ -30,6 +30,7 @@ import {
   sortOffersBy as sortAttractionsBy,
 } from "@/lib/attractions/present";
 import { stripMoreBlock } from "@/lib/chat/blocks";
+import { withHistoryCacheBreakpoint } from "@/lib/chat/cache";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -1152,7 +1153,11 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
               CHECK_FAVORITES_TOOL,
               PREFERENCE_TOOL,
             ],
-            messages: anthropicMessages,
+            // Second (moving) cache breakpoint on the last history block —
+            // the growing conversation reads from cache each turn instead of
+            // re-billing at full input price. Applied per hop on a copy;
+            // anthropicMessages itself stays marker-free.
+            messages: withHistoryCacheBreakpoint(anthropicMessages),
           });
 
           for await (const event of msgStream) {
