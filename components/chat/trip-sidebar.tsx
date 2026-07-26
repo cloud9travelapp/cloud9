@@ -124,6 +124,47 @@ export default function TripSidebar({
   const [draft, setDraft] = useState("");
   const [favoritesOpen, setFavoritesOpen] = useState(true);
   const favoriteGroups = groupFavorites(favorites);
+  // Deleting cascades to the conversation, the hearts and the timeline, so the
+  // confirmation states the real blast radius rather than a generic warning.
+  const [deleting, setDeleting] = useState<{
+    trip: Trip;
+    counts: { messages: number; favorites: number; timelineItems: number } | null;
+    busy: boolean;
+  } | null>(null);
+
+  async function openDeleteConfirm(trip: Trip) {
+    setDeleting({ trip, counts: null, busy: false });
+    try {
+      const res = await fetch(`/api/trips/${trip.id}`);
+      if (!res.ok) return;
+      const counts = (await res.json()) as {
+        messages: number;
+        favorites: number;
+        timelineItems: number;
+      };
+      setDeleting((d) => (d && d.trip.id === trip.id ? { ...d, counts } : d));
+    } catch {
+      /* the confirmation still works, just without the counts */
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const { trip } = deleting;
+    setDeleting({ ...deleting, busy: true });
+    try {
+      const res = await fetch(`/api/trips/${trip.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setDeleting(null);
+      // Leaving the trip you just deleted must land somewhere valid — /chat
+      // renders the zero-trip state correctly when it was the last one.
+      if (trip.id === activeTripId) router.push("/chat");
+      router.refresh();
+    } catch (err) {
+      console.error("Trip delete failed:", err);
+      setDeleting((d) => (d ? { ...d, busy: false } : d));
+    }
+  }
 
   async function saveRename(tripId: string) {
     const name = draft.trim();
@@ -144,6 +185,59 @@ export default function TripSidebar({
   }
 
   return (
+    <>
+      {deleting ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+          style={{
+            background:
+              "color-mix(in srgb, var(--c-bg-1) 60%, rgba(2,8,23,0.35))",
+          }}
+          onClick={() => !deleting.busy && setDeleting(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-panel border border-c-border bg-c-surface p-5 shadow-float"
+          >
+            <h2 className="font-display text-lg font-bold text-c-ink">
+              למחוק את הטיול?
+            </h2>
+            <p
+              dir="auto"
+              className="mt-1 truncate text-sm font-semibold text-c-accent [unicode-bidi:plaintext]"
+            >
+              {deleting.trip.name}
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-c-muted">
+              {deleting.counts
+                ? `יימחקו גם השיחה, ${deleting.counts.favorites} מועדפים ו-${deleting.counts.timelineItems} פריטים במסע. אי אפשר לשחזר.`
+                : "יימחקו גם השיחה, המועדפים והפריטים במסע. אי אפשר לשחזר."}
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={deleting.busy}
+                onClick={() => void confirmDelete()}
+                className="rounded-full bg-c-accent px-5 py-2.5 text-sm font-semibold text-c-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {deleting.busy ? "מוחק…" : "מחיקה"}
+              </button>
+              <button
+                type="button"
+                disabled={deleting.busy}
+                onClick={() => setDeleting(null)}
+                className="px-3 py-2.5 text-sm text-c-muted transition-opacity hover:opacity-70"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     <aside
       style={style}
       className={`w-72 shrink-0 flex-col border-e border-c-border bg-c-surface/80 backdrop-blur ${className}`}
@@ -253,18 +347,24 @@ export default function TripSidebar({
                         {formatDate(t.created_at)}
                       </span>
                     </span>
-                    {active ? (
+                    {/* Rename + delete on EVERY row, not just the active one.
+                        The pencil used to render only for the active trip and
+                        sat inside the link, so a mistitled trip you weren't
+                        currently in could not be fixed at all. Always mounted
+                        (opacity only) so it works on touch, where there is no
+                        hover. */}
+                    <span className="flex flex-none items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                       <button
                         type="button"
-                        aria-label="Rename trip"
-                        title="Rename"
+                        aria-label={`שינוי שם: ${t.name}`}
+                        title="שינוי שם"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           setDraft(t.name);
                           setRenamingId(t.id);
                         }}
-                        className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-surface hover:text-c-accent"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-surface hover:text-c-accent"
                       >
                         <svg
                           viewBox="0 0 24 24"
@@ -279,7 +379,31 @@ export default function TripSidebar({
                           <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                         </svg>
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        aria-label={`מחיקת הטיול: ${t.name}`}
+                        title="מחיקה"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void openDeleteConfirm(t);
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-c-muted transition-colors hover:bg-c-surface hover:text-c-accent"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+                        </svg>
+                      </button>
+                    </span>
                   </Link>
                 </li>
               );
@@ -363,5 +487,6 @@ export default function TripSidebar({
         </Link>
       </div>
     </aside>
+    </>
   );
 }
