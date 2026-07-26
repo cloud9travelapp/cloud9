@@ -1143,7 +1143,11 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
           const msgStream = getAnthropic().messages.stream({
             model: CONCIERGE_MODEL,
             max_tokens: 4096,
+            // Opus 5: thinking defaults ON; disabled keeps first-token latency
+            // and current stream behavior. disabled is only accepted at effort
+            // <= high, and the API default effort could change — pin it.
             thinking: { type: "disabled" },
+            output_config: { effort: "high" },
             system: systemBlocks,
             tools: [
               FLIGHT_TOOL,

@@ -1,8 +1,9 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
-/** The Cloud9 Concierge model. `claude-sonnet-5` is the current Sonnet. */
-export const CONCIERGE_MODEL = "claude-sonnet-5";
+/** The Cloud9 Concierge model. Opus 5 — top planning quality; cost is tamed
+ *  by the two-breakpoint prompt cache (static prefix + moving history). */
+export const CONCIERGE_MODEL = "claude-opus-5";
 
 /** Cheap, fast model for tiny utility calls (e.g. naming a trip). */
 export const NAMER_MODEL = "claude-haiku-4-5";
