@@ -303,15 +303,11 @@ export default function ChatShell({
           onRetryTimeline={(tripId) => void retryTimelineFailure(tripId)}
           onTimelineWriteFailed={(f) => setTimelineFailure(f)}
           onTimelineWritten={(tripId) => void refreshTimeline(tripId)}
-          onAddTimelineItem={(tripId, draft) =>
-            void addTimelineItem(tripId, draft)
-          }
+          onAddTimelineItem={(tripId, draft) => addTimelineItem(tripId, draft)}
           onUpdateTimelineItem={(tripId, id, patch) =>
-            void updateTimelineItem(tripId, id, patch)
+            updateTimelineItem(tripId, id, patch)
           }
-          onDeleteTimelineItem={(tripId, id) =>
-            void deleteTimelineItem(tripId, id)
-          }
+          onDeleteTimelineItem={(tripId, id) => deleteTimelineItem(tripId, id)}
         />
       </div>
     </div>

@@ -275,13 +275,13 @@ export default function ChatClient({
       category: TimelineCategory;
       notes: string | null;
     },
-  ) => void;
+  ) => Promise<void>;
   onUpdateTimelineItem: (
     tripId: string | null,
     id: string,
     patch: Record<string, unknown>,
-  ) => void;
-  onDeleteTimelineItem: (tripId: string | null, id: string) => void;
+  ) => Promise<void>;
+  onDeleteTimelineItem: (tripId: string | null, id: string) => Promise<void>;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
