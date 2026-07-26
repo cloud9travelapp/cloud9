@@ -833,7 +833,13 @@ export default function ChatClient({
       </div>
 
       {/* Composer — frosted, floats over the sky */}
-      <div className="border-t border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-0">
+      {/* The composer belongs to the conversation — the מסע tab is a document,
+          not a chat surface. */}
+      <div
+        className={`border-t border-c-border bg-c-surface/70 px-4 py-3 backdrop-blur sm:px-0 ${
+          tab === "chat" ? "" : "hidden"
+        }`}
+      >
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <textarea
             value={input}

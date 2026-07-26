@@ -16,7 +16,7 @@ import {
  *  no fault of its own — selections back then were prose only, with the
  *  structured offer already discarded. The empty state says so instead of
  *  looking broken. */
-export const TIMELINE_SINCE = "2026-07-26T00:00:00.000Z";
+export const TIMELINE_SINCE = "2026-07-26T16:00:00.000Z";
 
 const CATEGORY_LABEL: Record<TimelineCategory, string> = {
   shopping: "קניות",
@@ -170,7 +170,8 @@ export function JourneyPane({
               setAdding(false);
             }}
           />
-        ) : !loading ? (
+        ) : !loading && !isEmpty ? (
+          // The empty state has its own CTA — two add buttons would be noise.
           <button
             type="button"
             onClick={() => setAdding(true)}
