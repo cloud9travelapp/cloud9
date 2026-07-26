@@ -1,4 +1,5 @@
 import { auth, signIn } from "@/auth";
+import { displayFirstName } from "@/lib/display-name";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import ChatShell from "@/components/chat/chat-shell";
 import type { Trip } from "@/components/chat/trip-sidebar";
@@ -24,10 +25,15 @@ export default async function ChatPage({
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-c-accent text-c-on-accent shadow-rest">
           <CloudMarkClassic className="h-7 w-7" />
         </span>
-        <h1 className="font-display mt-6 text-3xl font-extrabold tracking-tight text-c-ink">
+        {/* dir="auto" + plaintext: this copy sits in an RTL container, and
+            without it a trailing period jumps to the head of the line. */}
+        <h1
+          dir="auto"
+          className="font-display mt-6 text-3xl font-extrabold tracking-tight text-c-ink [unicode-bidi:plaintext]"
+        >
           Sign in to start planning
         </h1>
-        <p className="mt-2 max-w-sm text-c-muted">
+        <p dir="auto" className="mt-2 max-w-sm text-c-muted [unicode-bidi:plaintext]">
           The Cloud9 Concierge remembers your trips and preferences, so you need
           to be signed in.
         </p>
@@ -49,8 +55,7 @@ export default async function ChatPage({
     );
   }
 
-  const firstName =
-    (session.user.name ?? "").trim().split(/\s+/)[0] || "traveler";
+  const firstName = displayFirstName(session.user.name);
 
   let trips: Trip[] = [];
   let initialMessages: Message[] = [];
