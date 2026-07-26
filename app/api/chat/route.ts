@@ -869,6 +869,7 @@ export async function POST(request: Request) {
       timelineWrite = "failed";
       await logDiag("timeline_write_failed", {
         trip: trip.id,
+        source: "agent",
         stage: "validate",
         reason: parsed.error.slice(0, 120),
       });
@@ -882,6 +883,7 @@ export async function POST(request: Request) {
       if (!result.ok) {
         await logDiag("timeline_write_failed", {
           trip: trip.id,
+          source: "agent",
           stage: "insert",
           reason: result.reason.slice(0, 120),
         });

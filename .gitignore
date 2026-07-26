@@ -43,6 +43,12 @@ yarn-error.log*
 .agents/
 skills-lock.json
 
+# local tooling output (rebuild on demand; never shared)
+# graphify-out/: ~700KB graph.json rewritten wholesale on every build — pure
+# churn in a single-committer repo. Rebuild with `graphify extract . --code-only`.
+graphify-out/
+.playwright-mcp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

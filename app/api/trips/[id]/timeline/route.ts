@@ -1,4 +1,5 @@
 import { ownedTrip } from "@/lib/api/owned-trip";
+import { logDiag } from "@/lib/diag";
 import { insertTimelineItem, listTimelineItems } from "@/lib/timeline/repo";
 import { parseTimelineDraft } from "@/lib/timeline/validate";
 
@@ -36,8 +37,19 @@ export async function POST(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Both timeline write paths (this one and the chat piggyback) report failures
+  // as the SAME timeline_write_failed diag, so a broken write is visible in SQL
+  // no matter which entry point produced it. The 503 below blames a pending
+  // migration, and an unrun migration is exactly the failure that stays silent
+  // longest — it must never be the only trace.
   const parsed = parseTimelineDraft(body, { source: "manual" });
   if (!parsed.ok) {
+    await logDiag("timeline_write_failed", {
+      trip: own.tripId,
+      source: "manual",
+      stage: "validate",
+      reason: parsed.error.slice(0, 120),
+    });
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
@@ -47,6 +59,12 @@ export async function POST(
     parsed.draft,
   );
   if (!result.ok) {
+    await logDiag("timeline_write_failed", {
+      trip: own.tripId,
+      source: "manual",
+      stage: "insert",
+      reason: result.reason.slice(0, 120),
+    });
     return Response.json(
       { error: "Timeline is unavailable (migration pending?)" },
       { status: 503 },
