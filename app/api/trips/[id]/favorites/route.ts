@@ -1,5 +1,4 @@
-import { auth } from "@/auth";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { ownedTrip } from "@/lib/api/owned-trip";
 import {
   FAVORITE_ITEM_TYPES,
   providerFromOfferId,
@@ -22,50 +21,6 @@ type DbRow = {
   created_at: string;
 };
 
-async function ownedTripId(
-  request: Request,
-  params: Promise<{ id: string }>,
-): Promise<
-  | { tripId: string; admin: ReturnType<typeof getSupabaseAdmin> }
-  | { error: Response }
-> {
-  const session = await auth();
-  if (!session?.user?.googleId) {
-    return { error: Response.json({ error: "Not authenticated" }, { status: 401 }) };
-  }
-  let admin: ReturnType<typeof getSupabaseAdmin>;
-  try {
-    admin = getSupabaseAdmin();
-  } catch (err) {
-    console.error("Supabase client init failed:", err);
-    return {
-      error: Response.json(
-        { error: "Server misconfigured: Supabase environment variables are missing." },
-        { status: 500 },
-      ),
-    };
-  }
-  const { data: user } = await admin
-    .from("users")
-    .select("id")
-    .eq("google_id", session.user.googleId)
-    .single();
-  if (!user) {
-    return { error: Response.json({ error: "Could not load your profile" }, { status: 500 }) };
-  }
-  const { id } = await params;
-  const { data: trip } = await admin
-    .from("trips")
-    .select("id")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
-  if (!trip) {
-    return { error: Response.json({ error: "Trip not found" }, { status: 404 }) };
-  }
-  return { tripId: trip.id as string, admin };
-}
-
 function toFavorite(row: DbRow): TripFavorite {
   return {
     itemType: row.item_type as FavoriteItemType,
@@ -80,7 +35,7 @@ export async function GET(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const own = await ownedTripId(request, ctx.params);
+  const own = await ownedTrip(ctx.params);
   if ("error" in own) return own.error;
   const { data, error } = await own.admin
     .from("trip_favorites")
@@ -99,7 +54,7 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const own = await ownedTripId(request, ctx.params);
+  const own = await ownedTrip(ctx.params);
   if ("error" in own) return own.error;
 
   let body: { itemType?: unknown; item?: unknown };
@@ -123,14 +78,10 @@ export async function POST(
     );
   }
 
-  const { data: user } = await own.admin
-    .from("trips")
-    .select("user_id")
-    .eq("id", own.tripId)
-    .single();
   const { error } = await own.admin.from("trip_favorites").upsert(
     {
-      user_id: (user as { user_id: string }).user_id,
+      // ownedTrip already resolved the owner — no second lookup needed.
+      user_id: own.userId,
       trip_id: own.tripId,
       item_type: itemType,
       item_provider: providerFromOfferId(itemCode),
@@ -153,7 +104,7 @@ export async function DELETE(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const own = await ownedTripId(request, ctx.params);
+  const own = await ownedTrip(ctx.params);
   if ("error" in own) return own.error;
   const url = new URL(request.url);
   const itemType = url.searchParams.get("type") ?? "";
