@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   bookingProgress,
@@ -21,6 +22,14 @@ import {
  *  structured offer already discarded. The empty state says so instead of
  *  looking broken. */
 export const TIMELINE_SINCE = "2026-07-26T16:00:00.000Z";
+
+/** mapbox-gl is ~250KB gz plus its CSS — loaded only when the traveler first
+ *  opens the map, never in the chat bundle. Once loaded it stays MOUNTED
+ *  (hidden), so toggling back to the list costs no further map loads. */
+const JourneyMap = dynamic(
+  () => import("./journey-map").then((m) => m.JourneyMap),
+  { ssr: false },
+);
 
 const CATEGORY_LABEL: Record<TimelineCategory, string> = {
   shopping: "קניות",
@@ -81,6 +90,10 @@ export function JourneyPane({
   className = "",
 }: Props) {
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<"list" | "map">("list");
+  // Once the map has been opened it stays mounted for the session, so the
+  // toggle can never trigger a second billed map load.
+  const [mapOpened, setMapOpened] = useState(false);
   const grouped = useMemo(() => groupTimeline(items), [items]);
   const coverage = useMemo(() => stayCoverageByDate(items), [items]);
   const progress = useMemo(() => bookingProgress(items), [items]);
@@ -129,16 +142,54 @@ export function JourneyPane({
           </div>
         ) : null}
 
+        {/* רשימה | מפה — a VIEW of the timeline, not a third tab. Only worth
+            offering once there's something to look at. */}
+        {!loading && !isEmpty ? (
+          <div className="flex items-center gap-1">
+            {(
+              [
+                ["list", "רשימה"],
+                ["map", "מפה"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setView(key);
+                  if (key === "map") setMapOpened(true);
+                }}
+                aria-current={view === key ? "true" : undefined}
+                className={`min-h-[28px] rounded-full px-3 text-xs font-semibold transition-opacity ${
+                  view === key
+                    ? "bg-c-accent text-c-on-accent"
+                    : "border border-c-border text-c-muted hover:opacity-80"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {mapOpened ? (
+          <JourneyMap
+            items={items}
+            active={view === "map"}
+            className={view === "map" ? "" : "hidden"}
+          />
+        ) : null}
+
         {loading ? (
           <div className="flex flex-col gap-3">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-16 animate-pulse rounded-card bg-c-cloud/70"
+                className="h-16 animate-pulse rounded-card bg-c-accent-soft/30"
               />
             ))}
           </div>
-        ) : isEmpty && !adding ? (
+        ) : view === "map" ? null : isEmpty && !adding ? (
           <EmptyState
             kind={
               tripCreatedAt
