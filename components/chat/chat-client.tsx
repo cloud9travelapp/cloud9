@@ -769,14 +769,18 @@ export default function ChatClient({
                       onSelect={(s, o) =>
                         void send(
                           s,
-                          // No check-in date: the STAYS payload doesn't carry
-                          // the searched dates, so the hotel lands unscheduled
-                          // rather than on a guessed day.
                           stayToTimelineDraft(
                             o as unknown as Parameters<
                               typeof stayToTimelineDraft
                             >[0],
-                            { checkIn: null, clientRef: crypto.randomUUID() },
+                            {
+                              // Absent on blocks written before the dates were
+                              // added — the hotel then lands unscheduled rather
+                              // than on a guessed day.
+                              checkIn: stays.checkIn ?? null,
+                              checkOut: stays.checkOut ?? null,
+                              clientRef: crypto.randomUUID(),
+                            },
                           ),
                         )
                       }

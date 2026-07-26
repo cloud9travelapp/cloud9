@@ -215,6 +215,20 @@ export function splitFlights(content: string): {
   }
 }
 
+/** An ISO calendar date the model claims — accepted only if it's well-formed
+ *  AND real (2026-02-31 is neither). Anything else is dropped, never coerced:
+ *  a wrong date would silently place a hotel on the wrong nights. */
+function isoDate(v: unknown): string | undefined {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const [y, m, d] = v.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+    ? v
+    : undefined;
+}
+
 /**
  * Mirror of splitFlights for the <<STAYS>> block. `lang` defaults to "en" unless
  * exactly "he". Any failure degrades to plain text; the display text never shows
@@ -233,12 +247,25 @@ export function splitStays(content: string): {
     let lang: Lang = "en";
     let offersRaw: unknown;
     let recommendedRaw: unknown;
+    let checkIn: string | undefined;
+    let checkOut: string | undefined;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const obj = parsed as { mock?: unknown; lang?: unknown; offers?: unknown; recommendedId?: unknown };
+      const obj = parsed as {
+        mock?: unknown;
+        lang?: unknown;
+        offers?: unknown;
+        recommendedId?: unknown;
+        checkIn?: unknown;
+        checkOut?: unknown;
+      };
       offersRaw = obj.offers;
       mock = obj.mock !== false; // label unless explicitly false
       lang = obj.lang === "he" ? "he" : "en"; // default en unless exactly "he"
       recommendedRaw = obj.recommendedId;
+      // Optional and validated: a malformed date is dropped rather than
+      // trusted, and blocks written before these existed simply have none.
+      checkIn = isoDate(obj.checkIn);
+      checkOut = isoDate(obj.checkOut);
     } else if (Array.isArray(parsed)) {
       offersRaw = parsed;
     }
@@ -261,7 +288,17 @@ export function splitStays(content: string): {
       shown.some((o) => o.id === recommendedRaw)
         ? recommendedRaw
         : undefined;
-    return { text, stays: { mock, lang, offers: shown, ...(recommendedId ? { recommendedId } : {}) } };
+    return {
+      text,
+      stays: {
+        mock,
+        lang,
+        offers: shown,
+        ...(recommendedId ? { recommendedId } : {}),
+        ...(checkIn ? { checkIn } : {}),
+        ...(checkOut ? { checkOut } : {}),
+      },
+    };
   } catch {
     return { text, stays: null };
   }

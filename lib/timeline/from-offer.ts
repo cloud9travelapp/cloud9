@@ -49,22 +49,29 @@ export function timelineCategoryForAttraction(
 
 export function stayToTimelineDraft(
   offer: StayOffer & WithCoords,
-  opts: { checkIn: string | null; clientRef: string },
+  opts: { checkIn: string | null; checkOut?: string | null; clientRef: string },
 ): TimelineDraft {
   return {
     itemType: "stay",
     source: "agent",
     category: "lodging",
     state: "planned",
-    // Check-in day. Check-in TIME is not in the offer, so it stays a day-level
-    // item rather than a made-up 15:00.
+    // The stay sits on its CHECK-IN day and spans forward from there. Check-in
+    // TIME is not in our data, so it stays a day-level item — never a made-up
+    // 15:00. Only a real confirmation (the future wallet) can supply one.
     date: opts.checkIn,
     startTime: null,
     durationMin: null,
     title: offer.name,
     notes: offer.area || null,
     ...coords(offer),
-    item: { ...offer } as Record<string, unknown>,
+    // checkOut rides in the snapshot: it's what lets the timeline draw the
+    // stay across the nights it actually covers.
+    item: {
+      ...offer,
+      ...(opts.checkIn ? { checkIn: opts.checkIn } : {}),
+      ...(opts.checkOut ? { checkOut: opts.checkOut } : {}),
+    } as Record<string, unknown>,
     clientRef: opts.clientRef,
   };
 }

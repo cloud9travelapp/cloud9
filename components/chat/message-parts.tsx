@@ -53,6 +53,12 @@ export type StaysPayload = {
   mock: boolean;
   lang: Lang;
   offers: StayOfferView[];
+  /** The searched dates (ISO), when the model supplied them. They put a chosen
+   *  hotel on real nights in the timeline instead of leaving it unscheduled.
+   *  Optional on purpose: messages written before this existed have neither,
+   *  and must keep parsing. */
+  checkIn?: string;
+  checkOut?: string;
   /** The concierge's named best-fit pick — badges its card and floats it to
    *  the top of the stack. Only ever an id present in offers. */
   recommendedId?: string;
