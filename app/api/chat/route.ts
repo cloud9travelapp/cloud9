@@ -1092,7 +1092,14 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
   }`;
 
   const systemBlocks: Anthropic.TextBlockParam[] = [
-    { type: "text", text: systemStatic, cache_control: { type: "ephemeral" } },
+    // 1-hour TTL (2x write, 0.1x read): pause-proof by decision 2026-07-26 —
+    // real users pause 15+ min and the 5-min cache expired on nearly half the
+    // measured turns, each expiry re-billing the full ~20K prefix at 1.25x.
+    {
+      type: "text",
+      text: systemStatic,
+      cache_control: { type: "ephemeral", ttl: "1h" },
+    },
     { type: "text", text: systemDynamic },
   ];
 

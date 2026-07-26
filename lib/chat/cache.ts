@@ -17,7 +17,10 @@ export function withHistoryCacheBreakpoint(
 ): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages;
   const last = messages[messages.length - 1];
-  const ephemeral = { type: "ephemeral" as const };
+  // 1-hour TTL to match the system-prefix breakpoint (longer-or-equal TTLs
+  // must not follow shorter ones): survives the real-user coffee pause that
+  // expired the 5-minute cache on nearly half of measured turns.
+  const ephemeral = { type: "ephemeral" as const, ttl: "1h" as const };
 
   let content: Anthropic.MessageParam["content"];
   if (typeof last.content === "string") {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { withHistoryCacheBreakpoint } from "@/lib/chat/cache";
 
-const ephemeral = { type: "ephemeral" };
+const ephemeral = { type: "ephemeral", ttl: "1h" };
 
 describe("withHistoryCacheBreakpoint", () => {
   it("returns the same (empty) array when there are no messages", () => {
