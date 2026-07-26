@@ -249,7 +249,14 @@ function EmptyState({
  *  the band only carries continuity. */
 const BAND = [
   { fill: "bg-c-accent-soft/30", rule: "bg-c-accent/40" },
-  { fill: "bg-c-cloud/50", rule: "bg-c-muted/30" },
+  // --c-mist is a raw phase token with no Tailwind color mapping (only nine
+  // --c-* roles are exposed in @theme), so it has to be mixed explicitly —
+  // "bg-c-mist/…" would silently compile to nothing, which is exactly how the
+  // second band went invisible the first time.
+  {
+    fill: "bg-[color-mix(in_srgb,var(--c-mist)_22%,transparent)]",
+    rule: "bg-[color-mix(in_srgb,var(--c-mist)_60%,transparent)]",
+  },
 ];
 
 function DayBlock({
