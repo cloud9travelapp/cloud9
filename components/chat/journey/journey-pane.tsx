@@ -247,6 +247,11 @@ function EmptyState({
 /** Band tints alternate per stay so two adjacent stays never read as one
  *  continuous block. The STRIP names the hotel — that's what disambiguates;
  *  the band only carries continuity. */
+/** Small text controls still need a real touch target. Measured at 390px, the
+ *  bare "הסרה" link was 25×18 — under the 24px minimum, on a destructive
+ *  action. The height is padding, so it costs nothing visually. */
+const TAP = "inline-flex min-h-[28px] items-center";
+
 const BAND = [
   { fill: "bg-c-accent-soft/30", rule: "bg-c-accent/40" },
   // --c-mist is a raw phase token with no Tailwind color mapping (only nine
@@ -389,7 +394,7 @@ function StayStrip({
             onClick={() =>
               void onUpdate(item.id, { state: booked ? "planned" : "booked" })
             }
-            className={`rounded-full px-2 py-0.5 font-semibold transition-opacity hover:opacity-80 ${
+            className={`${TAP} rounded-full px-2.5 font-semibold transition-opacity hover:opacity-80 ${
               booked
                 ? "bg-c-accent text-c-on-accent"
                 : "border border-c-border text-c-muted"
@@ -402,14 +407,14 @@ function StayStrip({
               <button
                 type="button"
                 onClick={() => void onDelete(item.id)}
-                className="font-semibold text-c-accent"
+                className={`${TAP} px-1 font-semibold text-c-accent`}
               >
                 כן, מחק
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
-                className="text-c-muted"
+                className={`${TAP} px-1 text-c-muted`}
               >
                 ביטול
               </button>
@@ -418,7 +423,7 @@ function StayStrip({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="transition-opacity hover:opacity-70"
+              className={`${TAP} px-1 transition-opacity hover:opacity-70`}
             >
               הסרה
             </button>
@@ -503,21 +508,21 @@ function TimelineRow({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-3 text-[11px]">
+      <div className="mt-1 flex items-center gap-3 text-[11px]">
         {confirmDelete ? (
           <>
             <span className="text-c-muted">למחוק?</span>
             <button
               type="button"
               onClick={() => void onDelete(item.id)}
-              className="font-semibold text-c-accent"
+              className={`${TAP} px-1 font-semibold text-c-accent`}
             >
               כן, מחק
             </button>
             <button
               type="button"
               onClick={() => setConfirmDelete(false)}
-              className="text-c-muted"
+              className={`${TAP} px-1 text-c-muted`}
             >
               ביטול
             </button>
@@ -526,7 +531,7 @@ function TimelineRow({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="text-c-muted transition-opacity hover:opacity-70"
+            className={`${TAP} px-1 text-c-muted transition-opacity hover:opacity-70`}
           >
             הסרה
           </button>
