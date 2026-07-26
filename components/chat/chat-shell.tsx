@@ -9,6 +9,8 @@ import {
   type FavoriteItemType,
   type TripFavorite,
 } from "@/lib/favorites";
+import type { TimelineFailure } from "./journey/journey-pane";
+import type { TimelineCategory, TimelineItem } from "@/lib/timeline/types";
 
 type Message = {
   role: "user" | "assistant";
@@ -34,6 +36,142 @@ export default function ChatShell({
   const [favorites, setFavorites] = useState<TripFavorite[]>([]);
   // A favorite tapped in the sidebar → the chat opens its detail modal.
   const [favoriteDetail, setFavoriteDetail] = useState<TripFavorite | null>(null);
+  // Timeline items live here for the same reason favorites do: ChatClient
+  // remounts on every trip switch (key={activeTripId}), the shell doesn't.
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  // A selection whose timeline write didn't land — kept so the מסע tab can
+  // show it and offer a retry. Silent divergence would read as a broken
+  // product: the concierge confirms a hotel that never reached the timeline.
+  const [timelineFailure, setTimelineFailure] = useState<
+    (TimelineFailure & { draft: Record<string, unknown> }) | null
+  >(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!activeTripId) {
+      setTimeline([]);
+      return;
+    }
+    setTimelineLoading(true);
+    fetch(`/api/trips/${activeTripId}/timeline`)
+      .then((res) => (res.ok ? res.json() : { items: [] }))
+      .then((d: { items?: TimelineItem[] }) => {
+        if (!alive) return;
+        setTimeline(d.items ?? []);
+        setTimelineLoading(false);
+      })
+      .catch(() => alive && setTimelineLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [activeTripId]);
+
+  /** Re-read the timeline after a write that the server owns (a selection
+   *  riding along with a chat message, where the server mints the row). */
+  async function refreshTimeline(tripId: string | null) {
+    if (!tripId) return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/timeline`);
+      if (!res.ok) return;
+      const d = (await res.json()) as { items?: TimelineItem[] };
+      setTimeline(d.items ?? []);
+    } catch {
+      /* leave the current list in place */
+    }
+  }
+
+  async function addTimelineItem(
+    tripId: string | null,
+    draft: {
+      title: string;
+      date: string | null;
+      startTime: string | null;
+      category: TimelineCategory;
+      notes: string | null;
+    },
+  ) {
+    if (!tripId) return;
+    const body = {
+      ...draft,
+      itemType: "manual",
+      source: "manual",
+      state: "planned",
+      clientRef: crypto.randomUUID(),
+    };
+    try {
+      const res = await fetch(`/api/trips/${tripId}/timeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = (await res.json()) as { item: TimelineItem };
+      setTimeline((prev) => [...prev, d.item]);
+    } catch (err) {
+      console.error("Timeline add failed:", err);
+      setTimelineFailure({ clientRef: body.clientRef, title: draft.title, draft: body });
+    }
+  }
+
+  async function updateTimelineItem(
+    tripId: string | null,
+    id: string,
+    patch: Record<string, unknown>,
+  ) {
+    if (!tripId) return;
+    const before = timeline;
+    // Optimistic: marking "booked" should feel instant.
+    setTimeline((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, ...(patch as Partial<TimelineItem>) } : i)),
+    );
+    try {
+      const res = await fetch(`/api/trips/${tripId}/timeline/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = (await res.json()) as { item: TimelineItem };
+      setTimeline((prev) => prev.map((i) => (i.id === id ? d.item : i)));
+    } catch (err) {
+      console.error("Timeline update failed:", err);
+      setTimeline(before);
+    }
+  }
+
+  async function deleteTimelineItem(tripId: string | null, id: string) {
+    if (!tripId) return;
+    const before = timeline;
+    setTimeline((prev) => prev.filter((i) => i.id !== id));
+    try {
+      const res = await fetch(`/api/trips/${tripId}/timeline/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error("Timeline delete failed:", err);
+      setTimeline(before);
+    }
+  }
+
+  /** Retry a selection's failed timeline write. Idempotent server-side on
+   *  clientRef, so a retry can never duplicate the item. */
+  async function retryTimelineFailure(tripId: string | null) {
+    if (!tripId || !timelineFailure) return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/timeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(timelineFailure.draft),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTimelineFailure(null);
+      await refreshTimeline(tripId);
+    } catch (err) {
+      console.error("Timeline retry failed:", err);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -156,6 +294,24 @@ export default function ChatShell({
           onToggleFavorite={toggleFavorite}
           openFavoriteDetail={favoriteDetail}
           onFavoriteDetailShown={() => setFavoriteDetail(null)}
+          timeline={timeline}
+          timelineLoading={timelineLoading}
+          tripCreatedAt={
+            trips.find((t) => t.id === activeTripId)?.created_at ?? null
+          }
+          timelineFailure={timelineFailure}
+          onRetryTimeline={(tripId) => void retryTimelineFailure(tripId)}
+          onTimelineWriteFailed={(f) => setTimelineFailure(f)}
+          onTimelineWritten={(tripId) => void refreshTimeline(tripId)}
+          onAddTimelineItem={(tripId, draft) =>
+            void addTimelineItem(tripId, draft)
+          }
+          onUpdateTimelineItem={(tripId, id, patch) =>
+            void updateTimelineItem(tripId, id, patch)
+          }
+          onDeleteTimelineItem={(tripId, id) =>
+            void deleteTimelineItem(tripId, id)
+          }
         />
       </div>
     </div>

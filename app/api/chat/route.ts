@@ -31,6 +31,8 @@ import {
 } from "@/lib/attractions/present";
 import { stripMoreBlock } from "@/lib/chat/blocks";
 import { withHistoryCacheBreakpoint } from "@/lib/chat/cache";
+import { insertTimelineItem } from "@/lib/timeline/repo";
+import { parseTimelineDraft } from "@/lib/timeline/validate";
 
 // Give the streamed Concierge reply headroom past Vercel's 10s default so long
 // responses aren't cut off mid-stream in production.
@@ -687,7 +689,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: { message?: unknown; tripId?: unknown };
+  let body: { message?: unknown; tripId?: unknown; timelineItem?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -856,6 +858,36 @@ export async function POST(request: Request) {
     role: "user",
     content: message,
   });
+
+  // A selection carries its structured item in the SAME request as the message
+  // it produced, so the two can never disagree: the concierge can't confirm a
+  // hotel that never reached the timeline. Reported back via X-Timeline-Write.
+  let timelineWrite: "none" | "ok" | "failed" = "none";
+  if (body.timelineItem) {
+    const parsed = parseTimelineDraft(body.timelineItem, { source: "agent" });
+    if (!parsed.ok) {
+      timelineWrite = "failed";
+      await logDiag("timeline_write_failed", {
+        trip: trip.id,
+        stage: "validate",
+        reason: parsed.error.slice(0, 120),
+      });
+    } else {
+      const result = await insertTimelineItem(
+        admin,
+        { tripId: trip.id, userId: user.id },
+        parsed.draft,
+      );
+      timelineWrite = result.ok ? "ok" : "failed";
+      if (!result.ok) {
+        await logDiag("timeline_write_failed", {
+          trip: trip.id,
+          stage: "insert",
+          reason: result.reason.slice(0, 120),
+        });
+      }
+    }
+  }
 
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || "there";
   const stablePrefs: string[] = Array.isArray(user.preferences)
@@ -1375,6 +1407,10 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Trip-Id": trip.id,
+      // "ok" | "failed" | "none" — the client shows a retry affordance on
+      // "failed" rather than letting the timeline silently disagree with a
+      // reply that just confirmed the choice.
+      "X-Timeline-Write": timelineWrite,
     },
   });
 }

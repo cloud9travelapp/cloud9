@@ -33,7 +33,7 @@ export function AttractionStack({
   sessionSeenIds: string[];
   isHearted: (offerId: string) => boolean;
   onToggleHeart: (offer: AttractionOfferView) => void;
-  onSelect: (choice: string) => void;
+  onSelect: (choice: string, offer: AttractionOfferView) => void;
   onOpenDetail: (offer: AttractionOfferView) => void;
 }) {
   const [sort, setSort] = useState<AttractionSortMode>("fit");

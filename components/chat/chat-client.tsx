@@ -33,6 +33,17 @@ import {
 } from "@/lib/chat/blocks";
 import { isFavorite, type FavoriteItemType, type TripFavorite } from "@/lib/favorites";
 import HeroAtmosphere from "@/components/landing/hero/hero-atmosphere";
+import { JourneyPane, type TimelineFailure } from "./journey/journey-pane";
+import {
+  attractionToTimelineDraft,
+  flightToTimelineDraft,
+  stayToTimelineDraft,
+} from "@/lib/timeline/from-offer";
+import type {
+  TimelineCategory,
+  TimelineDraft,
+  TimelineItem,
+} from "@/lib/timeline/types";
 
 // Starter prompts shown on the empty state (interface language: English).
 const INSPIRATION = [
@@ -131,7 +142,7 @@ function StayStack({
   sessionSeenIds: string[];
   isHearted: (offerId: string) => boolean;
   onToggleHeart: (offer: StayOfferView) => void;
-  onSelect: (choice: string) => void;
+  onSelect: (choice: string, offer: StayOfferView) => void;
   onOpenDetail: (offer: StayOfferView) => void;
 }) {
   const [sort, setSort] = useState<StaySortMode>("fit");
@@ -221,6 +232,16 @@ export default function ChatClient({
   onToggleFavorite,
   openFavoriteDetail,
   onFavoriteDetailShown,
+  timeline,
+  timelineLoading,
+  tripCreatedAt,
+  timelineFailure,
+  onRetryTimeline,
+  onTimelineWriteFailed,
+  onTimelineWritten,
+  onAddTimelineItem,
+  onUpdateTimelineItem,
+  onDeleteTimelineItem,
 }: {
   initialMessages: Message[];
   firstName: string;
@@ -236,10 +257,40 @@ export default function ChatClient({
   /** A favorite tapped in the sidebar drawer — open its detail modal. */
   openFavoriteDetail: TripFavorite | null;
   onFavoriteDetailShown: () => void;
+  timeline: TimelineItem[];
+  timelineLoading: boolean;
+  tripCreatedAt: string | null;
+  timelineFailure: TimelineFailure | null;
+  onRetryTimeline: (tripId: string | null) => void;
+  onTimelineWriteFailed: (
+    failure: TimelineFailure & { draft: Record<string, unknown> },
+  ) => void;
+  onTimelineWritten: (tripId: string | null) => void;
+  onAddTimelineItem: (
+    tripId: string | null,
+    draft: {
+      title: string;
+      date: string | null;
+      startTime: string | null;
+      category: TimelineCategory;
+      notes: string | null;
+    },
+  ) => void;
+  onUpdateTimelineItem: (
+    tripId: string | null,
+    id: string,
+    patch: Record<string, unknown>,
+  ) => void;
+  onDeleteTimelineItem: (tripId: string | null, id: string) => void;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [currentTripId, setCurrentTripId] = useState<string | null>(tripId);
+  // Tab state lives in the client, not the URL: switching trips is a real
+  // navigation (which remounts this component), but switching TABS must not
+  // be — the chat keeps its scroll and any in-flight stream, and in stage C
+  // the map keeps its single initialization (Mapbox bills per map load).
+  const [tab, setTab] = useState<"chat" | "journey">("chat");
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [detailFor, setDetailFor] = useState<{
@@ -268,7 +319,17 @@ export default function ChatClient({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  async function send(preset?: string) {
+  /**
+   * Send a message, optionally carrying a timeline item created by the same
+   * tap (an offer selection).
+   *
+   * ONE request writes both. Two parallel writes could disagree — the
+   * concierge confirming a hotel while the timeline stayed empty — and that
+   * divergence reads as a broken product. Here the turn either fully lands or
+   * fully fails, and a retry replays both (idempotent server-side on
+   * clientRef, so it can't duplicate the item).
+   */
+  async function send(preset?: string, timelineItem?: TimelineDraft) {
     const text = (preset ?? input).trim();
     if (!text || isStreaming) return;
 
@@ -291,7 +352,11 @@ export default function ChatClient({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, tripId: currentTripId }),
+        body: JSON.stringify({
+          message: text,
+          tripId: currentTripId,
+          ...(timelineItem ? { timelineItem } : {}),
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -314,6 +379,20 @@ export default function ChatClient({
       if (headerTripId) {
         resolvedTripId = headerTripId;
         setCurrentTripId(headerTripId);
+      }
+
+      // The timeline half of this turn, reported the same way as the trip id.
+      if (timelineItem) {
+        if (res.headers.get("X-Timeline-Write") === "ok") {
+          onTimelineWritten(resolvedTripId);
+        } else {
+          // Visible and retryable — never a silent divergence.
+          onTimelineWriteFailed({
+            clientRef: timelineItem.clientRef,
+            title: timelineItem.title,
+            draft: timelineItem as unknown as Record<string, unknown>,
+          });
+        }
       }
 
       const reader = res.body.getReader();
@@ -485,12 +564,71 @@ export default function ChatClient({
         <span className="w-9" aria-hidden="true" />
       </header>
 
+      {/* שיחה | מסע — one tap, identical on desktop and mobile. Shown only
+          once a trip exists; there's nothing to plan before that. */}
+      {currentTripId ? (
+        <div className="flex items-center justify-center gap-1 border-b border-c-border bg-c-surface/70 px-4 py-2 backdrop-blur">
+          {(
+            [
+              ["chat", "שיחה"],
+              ["journey", "מסע"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              aria-current={tab === key ? "page" : undefined}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-opacity ${
+                tab === key
+                  ? "bg-c-accent text-c-on-accent"
+                  : "text-c-muted hover:opacity-80"
+              }`}
+            >
+              {label}
+              {key === "journey" && timeline.length > 0 ? (
+                <span className="ms-1.5 text-[11px] opacity-80 tabular-nums">
+                  {timeline.length}
+                </span>
+              ) : null}
+              {key === "journey" && timelineFailure ? (
+                <span
+                  aria-label="פריט לא נשמר"
+                  className="ms-1.5 inline-block h-1.5 w-1.5 rounded-full bg-c-accent align-middle"
+                />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Both panes stay MOUNTED — hiding instead of unmounting keeps the chat's
+          scroll position and any in-flight stream alive across a tab switch
+          (and, in stage C, the map's single initialization). */}
+      {currentTripId ? (
+        <JourneyPane
+          className={tab === "journey" ? "" : "hidden"}
+          items={timeline}
+          loading={timelineLoading}
+          tripCreatedAt={tripCreatedAt}
+          failure={timelineFailure}
+          onRetryFailure={() => onRetryTimeline(currentTripId)}
+          onAdd={(draft) => onAddTimelineItem(currentTripId, draft)}
+          onUpdate={(id, patch) =>
+            onUpdateTimelineItem(currentTripId, id, patch)
+          }
+          onDelete={(id) => onDeleteTimelineItem(currentTripId, id)}
+        />
+      ) : null}
+
       {/* Messages — the app-wide sky (SkyClouds + phase gradient) shows through.
          On the empty state the warm hero atmosphere is present too (same CSS
          treatment as the landing hero), and the scroll chrome stays soft. */}
       <div
         ref={scrollRef}
-        className="scroll-soft relative flex-1 overflow-y-auto px-4 py-6"
+        className={`scroll-soft relative flex-1 overflow-y-auto px-4 py-6 ${
+          tab === "chat" ? "" : "hidden"
+        }`}
       >
         {isEmpty ? <HeroAtmosphere /> : null}
         <div className="relative z-[1] mx-auto flex max-w-2xl flex-col gap-5">
@@ -499,11 +637,17 @@ export default function ChatClient({
               <CloudMark size="h-16 w-16" />
               <h1
                 dir="auto"
-                className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink"
+                className="font-display mt-5 text-3xl font-extrabold tracking-tight text-c-ink [unicode-bidi:plaintext]"
               >
                 Where to next, <bdi>{firstName}</bdi>?
               </h1>
-              <p className="mt-2 max-w-sm text-c-muted">
+              {/* dir="auto" + plaintext: English copy inside the RTL chat
+                  shell — without it the closing period renders at the start of
+                  the last line (".it from a spark to a plan"). */}
+              <p
+                dir="auto"
+                className="mt-2 max-w-sm text-c-muted [unicode-bidi:plaintext]"
+              >
                 Tell the Concierge what you&apos;re dreaming of. We&apos;ll take
                 it from a spark to a plan.
               </p>
@@ -595,7 +739,17 @@ export default function ChatClient({
                                 flights.lang,
                               )
                             }
-                            onSelect={(s) => void send(s)}
+                            onSelect={(s, o) =>
+                              void send(
+                                s,
+                                flightToTimelineDraft(
+                                  o as unknown as Parameters<
+                                    typeof flightToTimelineDraft
+                                  >[0],
+                                  { clientRef: crypto.randomUUID() },
+                                ),
+                              )
+                            }
                           />
                         </div>
                       ))}
@@ -612,7 +766,20 @@ export default function ChatClient({
                       onToggleHeart={(offer) =>
                         onToggleFavorite(currentTripId, "stay", offer, stays.lang)
                       }
-                      onSelect={(s) => void send(s)}
+                      onSelect={(s, o) =>
+                        void send(
+                          s,
+                          // No check-in date: the STAYS payload doesn't carry
+                          // the searched dates, so the hotel lands unscheduled
+                          // rather than on a guessed day.
+                          stayToTimelineDraft(
+                            o as unknown as Parameters<
+                              typeof stayToTimelineDraft
+                            >[0],
+                            { checkIn: null, clientRef: crypto.randomUUID() },
+                          ),
+                        )
+                      }
                       onOpenDetail={(offer) =>
                         setDetailFor({ offer, lang: stays.lang })
                       }
@@ -629,7 +796,17 @@ export default function ChatClient({
                       onToggleHeart={(offer) =>
                         onToggleFavorite(currentTripId, "attraction", offer, attractions.lang)
                       }
-                      onSelect={(s) => void send(s)}
+                      onSelect={(s, o) =>
+                        void send(
+                          s,
+                          attractionToTimelineDraft(
+                            o as unknown as Parameters<
+                              typeof attractionToTimelineDraft
+                            >[0],
+                            { clientRef: crypto.randomUUID() },
+                          ),
+                        )
+                      }
                       onOpenDetail={(offer) =>
                         setAttractionDetailFor({ offer, lang: attractions.lang })
                       }

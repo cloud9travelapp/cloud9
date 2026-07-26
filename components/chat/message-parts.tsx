@@ -490,7 +490,10 @@ export function FlightCard({
   /** Real chat only: heart state + toggle (absent in the landing demo). */
   hearted?: boolean;
   onToggleHeart?: () => void;
-  onSelect?: (choice: string) => void;
+  /** The offer rides along with the summary so the caller can put the CHOSEN
+   *  item on the timeline — the prose summary alone drops the id, price and
+   *  coordinates, which used to make a selection unrecoverable. */
+  onSelect?: (choice: string, offer: FlightOfferView) => void;
 }) {
   const L = LABELS[lang];
   const first = offer.segments[0];
@@ -626,6 +629,7 @@ export function FlightCard({
           onSelect={() =>
             onSelect(
               `${L.selected}: ${offer.airlineName}, ${first.origin}→${last.destination}, ${L.stops(offer.stops)}, ${first.departTime.slice(0, 10)}, ${price}`,
+              offer,
             )
           }
         />
@@ -773,7 +777,7 @@ export function StayCard({
   /** Real chat only: heart state + toggle (absent in the landing demo). */
   hearted?: boolean;
   onToggleHeart?: () => void;
-  onSelect?: (choice: string) => void;
+  onSelect?: (choice: string, offer: StayOfferView) => void;
   /** Real chat only: tapping the card body opens the detail modal. */
   onOpenDetail?: () => void;
 }) {
@@ -943,6 +947,7 @@ export function StayCard({
               `${L.selected}: ${offer.name}, ${offer.area}${
                 offer.stars > 0 ? `, ${L.stars(offer.stars)}` : ""
               }, ${money(offer.pricePerNight, offer.currency)} ${L.perNight}`,
+              offer,
             )
           }
         />
@@ -1083,7 +1088,7 @@ export function AttractionCard({
   recommended?: boolean;
   hearted?: boolean;
   onToggleHeart?: () => void;
-  onSelect?: (choice: string) => void;
+  onSelect?: (choice: string, offer: AttractionOfferView) => void;
   onOpenDetail?: () => void;
 }) {
   const L = A_LABELS[lang];
@@ -1227,6 +1232,7 @@ export function AttractionCard({
                   ? `, ${L.from} ${money(offer.fromPrice, offer.currency)} ${L.perPerson}`
                   : ""
               }`,
+              offer,
             )
           }
         />
