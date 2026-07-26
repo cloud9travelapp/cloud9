@@ -29,11 +29,11 @@ const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
-// Key prefix carries a GENERATION ("hba4" since the per-person-only from-price)
+// Key prefix carries a GENERATION ("hba5" since offers carry latitude/longitude)
 // so a mapping change can invalidate stale cached offers without a migration.
 function cacheKey(query: AttractionQuery): string {
   return [
-    "hba4",
+    "hba5",
     (query.latitude ?? 0).toFixed(2),
     (query.longitude ?? 0).toFixed(2),
     query.from,
@@ -358,6 +358,11 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
       ...(fromPrice != null ? { fromPrice: Math.round(fromPrice) } : {}),
       currency: normalizeCurrency(a.currencyName ?? a.currency),
       distanceKm,
+      // Carried through (not just consumed for distanceKm) so the timeline map
+      // can pin the activity. Cache generation bumped to hba5 for this.
+      ...(typeof geo?.latitude === "number" && typeof geo?.longitude === "number"
+        ? { latitude: geo.latitude, longitude: geo.longitude }
+        : {}),
       // summary comes from the content description when present; the model
       // rewrites it into the reply language when authoring the block.
       summary: description ? description.slice(0, 140) : undefined,

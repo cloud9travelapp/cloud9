@@ -1,3 +1,4 @@
+import { scatterAround } from "@/lib/geo";
 import type {
   AttractionCategory,
   AttractionOffer,
@@ -213,6 +214,9 @@ export async function mockSearchAttractions(
       currency: "EUR",
       distanceKm,
       summary: SUMMARY_BY_CATEGORY[category],
+      // Deterministic scatter around the searched point (see the stays mock).
+      // No searched point → no coordinates, never an invented one.
+      ...scatterAround(query.latitude, query.longitude, distanceKm, rand),
     });
   }
 

@@ -12,10 +12,10 @@ import type { TimelineCategory, TimelineDraft } from "./types";
 // turn it into a timeline row. Everything they emit is data the offer actually
 // carries — nothing here invents a time, a date, or a place.
 
-/** Offers don't carry coordinates today (the provider layer computes distance
- *  from lat/lng and then drops them). Typed as optional so these mappers keep
- *  working unchanged the moment the provider layer starts passing them
- *  through — until then, agent items land with no location, honestly. */
+/** Coordinates are optional on the offer types: real providers supply them,
+ *  the mock only does so around a known searched point, and offers cached
+ *  before the hb2/hba5 generations have none. Absent → the item lands in the
+ *  map's "no location" list rather than at a guessed pin. */
 type WithCoords = { latitude?: number; longitude?: number };
 
 function coords(o: WithCoords): { lat: number | null; lng: number | null } {

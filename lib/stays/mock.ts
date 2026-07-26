@@ -1,3 +1,4 @@
+import { scatterAround } from "@/lib/geo";
 import type { StayAvailabilityCheck, StayByNameResult, StayOffer, StayQuery, StayType } from "./types";
 
 // Deterministic-but-varied fake data: the same query always yields the same
@@ -129,6 +130,11 @@ export async function mockSearchStays(query: StayQuery): Promise<StayOffer[]> {
       );
     const totalPrice = pricePerNight * nights * rooms;
 
+    // Deterministic scatter around the searched point so the timeline map has
+    // something coherent to draw in mock mode. No searched point → no
+    // coordinates: the mock never invents a location out of nothing.
+    const geo = scatterAround(query.latitude, query.longitude, distanceMinutes / 12, rand);
+
     offers.push({
       id: `mock-${seed.toString(36)}-${i}`,
       name,
@@ -141,6 +147,7 @@ export async function mockSearchStays(query: StayQuery): Promise<StayOffer[]> {
       pricePerNight,
       totalPrice,
       currency: "USD",
+      ...geo,
     });
   }
 

@@ -110,9 +110,9 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
     // center per the tool contract, so distanceKm = "from center" in v1.
     const hLat = Number(h.latitude);
     const hLon = Number(h.longitude);
+    const hasGeo = Number.isFinite(hLat) && Number.isFinite(hLon);
     const distanceKm =
-      Number.isFinite(hLat) &&
-      Number.isFinite(hLon) &&
+      hasGeo &&
       typeof query.latitude === "number" &&
       typeof query.longitude === "number"
         ? Math.round(haversineKm(query.latitude, query.longitude, hLat, hLon) * 10) / 10
@@ -125,6 +125,10 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
       stars: starsFrom(h.categoryName),
       amenities: [], // availability-only; Content API enrichment is a roadmap item
       distanceKm,
+      // Carried through (not just consumed for distanceKm) so the timeline map
+      // can pin the hotel. Cache generation bumped to hb2 for this.
+      latitude: hasGeo ? hLat : undefined,
+      longitude: hasGeo ? hLon : undefined,
       pricePerNight: Math.max(1, Math.round(total / nights / rooms)),
       totalPrice: Math.round(total),
       currency: h.currency || "EUR",
@@ -325,7 +329,10 @@ export async function getCapturedRooms(
  *  in the key — the full list is cached and bands are filtered afterwards. */
 function cacheKey(query: StayQuery): string {
   return [
-    "hb1",
+    // GENERATION marker ("hb2" since offers started carrying latitude/longitude
+    // for the timeline map) — bumping it invalidates stale cached offers
+    // without a migration. liveCallsToday() matches any generation.
+    "hb2",
     query.latitude!.toFixed(2),
     query.longitude!.toFixed(2),
     query.checkIn,
@@ -364,15 +371,17 @@ async function cachePut(key: string, offers: StayOffer[]): Promise<void> {
 }
 
 /** Live calls today ≈ SEARCH cache rows written since UTC midnight (each live
- *  call writes exactly one "hb1|" geo row or "hbh|" by-codes row; a TTL
- *  refresh re-dates its row, still counted). Scoped by key prefix — per-hotel
- *  "hbrooms|" rows and diag rows must NOT inflate the count. */
+ *  call writes exactly one geo row "hb<generation>|" or by-codes row "hbh|"; a
+ *  TTL refresh re-dates its row, still counted). The "_" matches EXACTLY one
+ *  char, so this covers every geo generation (hb1, hb2, …) plus "hbh|" while
+ *  per-hotel "hbrooms|" rows can never inflate the count — a generation bump
+ *  must never silently disable the daily guard. */
 async function liveCallsToday(): Promise<number> {
   try {
     const midnight = new Date();
     midnight.setUTCHours(0, 0, 0, 0);
     const counts = await Promise.all(
-      ["hb1|%", "hbh|%"].map(async (prefix) => {
+      ["hb_|%"].map(async (prefix) => {
         const { count, error } = await getSupabaseAdmin()
           .from("stay_search_cache")
           .select("key", { count: "exact", head: true })

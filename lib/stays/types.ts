@@ -63,6 +63,11 @@ export type StayOffer = {
   distanceKey?: string; // POI key: beach | center | oldTown | station | park
   distanceMinutes?: number; // walking minutes to that POI
   distanceKm?: number; // straight-line km from the searched point (city center)
+  /** The property's own coordinates, when the provider supplies them — what
+   *  the timeline map pins. Absent for coord-less providers and older cached
+   *  offers (see the hb2 cache generation). */
+  latitude?: number;
+  longitude?: number;
   pricePerNight: number;
   totalPrice: number; // pricePerNight × nights × rooms
   currency: string;

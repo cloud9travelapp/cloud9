@@ -40,6 +40,11 @@ export type AttractionOffer = {
   fromPrice?: number;
   currency: string;
   distanceKm?: number; // straight-line km from the searched point
+  /** The activity's own coordinates, when the provider supplies them — what
+   *  the timeline map pins. Absent for coord-less providers and older cached
+   *  offers (see the hba5 cache generation). */
+  latitude?: number;
+  longitude?: number;
   /** 0–5. DISPLAY-WHEN-PRESENT ONLY — Hotelbeds Activities does not document a
    *  review field (same as the Hotels finding), so nothing may ever depend on
    *  this; the mock deliberately omits it. */
