@@ -1,7 +1,7 @@
 import "server-only";
 import type { AttractionDetail } from "./types";
 import { mockAttractionDetail } from "./mock-detail";
-import { hotelbedsActivityContent } from "./hotelbeds";
+import { getCapturedModalities, hotelbedsActivityContent } from "./hotelbeds";
 
 /**
  * Provider-agnostic attraction detail, dispatched by the offer id's namespace
@@ -13,15 +13,20 @@ export async function getAttractionDetail(
   attractionId: string,
 ): Promise<AttractionDetail> {
   if (attractionId.startsWith("hb-")) {
-    const content = await hotelbedsActivityContent(attractionId.slice(3));
+    const code = attractionId.slice(3);
+    const [content, modalities] = await Promise.all([
+      hotelbedsActivityContent(code),
+      getCapturedModalities(code),
+    ]);
     return {
       mock: false,
       provider: "hotelbeds",
-      code: attractionId.slice(3),
+      code,
       images: content?.images ?? [],
       description: content?.description,
       included: content?.included,
       highlights: content?.highlights,
+      modalities,
       // content===null → the Content call failed (403 quota / error), not "no
       // photos" — drives the honest modal note (same as stays).
       contentUnavailable: !content,

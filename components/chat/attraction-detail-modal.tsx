@@ -20,8 +20,14 @@ const T = {
   he: {
     from: "החל מ־",
     perPerson: "לאדם",
+    perGroup: "לקבוצה",
     highlights: "עיקרי החוויה",
     whatsIncluded: "מה כלול",
+    options: "אפשרויות הזמנה",
+    travelers: "משתתפים",
+    forN: (n: number) => `ל-${n}`,
+    decrease: "פחות משתתפים",
+    increase: "יותר משתתפים",
     close: "סגירה",
     heart: "שמור למועדפים",
     unheart: "הסר מהמועדפים",
@@ -34,8 +40,14 @@ const T = {
   en: {
     from: "from",
     perPerson: "per person",
+    perGroup: "per group",
     highlights: "Highlights",
     whatsIncluded: "What's included",
+    options: "Booking options",
+    travelers: "Travelers",
+    forN: (n: number) => `for ${n}`,
+    decrease: "Fewer travelers",
+    increase: "More travelers",
     close: "Close",
     heart: "Save to favorites",
     unheart: "Remove from favorites",
@@ -117,6 +129,9 @@ export function AttractionDetailModal({
   const [detail, setDetail] = useState<AttractionDetail | null>(null);
   const [failed, setFailed] = useState(false);
   const [closing, setClosing] = useState(false);
+  // Party size for the in-modal price math (default 2 adults; the conversation
+  // stays conversational — numbers live here). Pure client state.
+  const [party, setParty] = useState(2);
   const closeTimer = useRef<number | null>(null);
 
   const requestClose = useCallback(() => {
@@ -247,6 +262,76 @@ export function AttractionDetailModal({
                       </li>
                     ))}
                   </ul>
+                </div>
+              ) : null}
+
+              {detail.modalities && detail.modalities.length > 0 ? (
+                <div className="mt-5">
+                  {/* heading + inline party stepper — changing it recalculates
+                      every per-person modality total in place, no chat message */}
+                  <div dir="auto" className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-base font-bold text-c-ink">{L.options}</h3>
+                    <div className="flex items-center gap-2" role="group" aria-label={L.travelers}>
+                      <button
+                        type="button"
+                        aria-label={L.decrease}
+                        disabled={party <= 1}
+                        onClick={() => setParty((p) => Math.max(1, p - 1))}
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-c-border text-c-accent transition-colors hover:bg-c-accent-soft disabled:opacity-40"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[1.25rem] text-center text-sm font-semibold text-c-ink tabular-nums">
+                        {party}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={L.increase}
+                        disabled={party >= 9}
+                        onClick={() => setParty((p) => Math.min(9, p + 1))}
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-c-border text-c-accent transition-colors hover:bg-c-accent-soft disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {detail.modalities.map((m) => {
+                      const priceText =
+                        typeof m.perPerson === "number"
+                          ? party > 1
+                            ? `${money(m.perPerson * party, currency)} ${L.forN(party)} · ${money(m.perPerson, currency)} ${L.perPerson}`
+                            : `${money(m.perPerson, currency)} ${L.perPerson}`
+                          : typeof m.groupTotal === "number"
+                            ? `${money(m.groupTotal, currency)} ${L.perGroup}`
+                            : "";
+                      return (
+                        <div key={m.name} className="rounded-card border border-c-border px-3 py-2.5">
+                          <div dir="auto" className="text-sm font-semibold text-c-ink">
+                            {m.name}
+                            {m.durationMinutes ? (
+                              <span dir="ltr" className="ms-2 text-[11px] font-normal text-c-muted tabular-nums">
+                                {durationLabel(m.durationMinutes)}
+                              </span>
+                            ) : null}
+                          </div>
+                          {priceText ? (
+                            <div dir="auto" className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onSelect(`${L.selected}: ${name}, ${m.name}, ${priceText}`)
+                                }
+                                className="rounded-full border border-c-accent/40 bg-c-surface px-3 py-1.5 text-xs text-c-accent transition-colors hover:bg-c-accent hover:text-c-on-accent"
+                              >
+                                {priceText}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : null}
 

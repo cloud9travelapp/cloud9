@@ -47,6 +47,16 @@ export type AttractionOffer = {
   summary?: string; // one-line blurb
 };
 
+/** One bookable variant of an activity — its "room". Rates keep their
+ *  semantics SEPARATE and labeled: perPerson is a per-traveler price,
+ *  groupTotal is a whole-booking price (private groups). Never mixed. */
+export type AttractionModality = {
+  name: string;
+  perPerson?: number;
+  groupTotal?: number;
+  durationMinutes?: number;
+};
+
 // ── Detail layer (modal + get_attraction_details tool) ───────────────────
 // Content (images/description/what's-included) comes lazily from the provider's
 // content path, permanently cached — exactly like the stays detail layer.
@@ -65,6 +75,9 @@ export type AttractionDetail = {
   images: string[]; // absolute URLs, gallery order
   included?: string[]; // "what's included" bullets (neutral display strings)
   highlights?: string[]; // short experience highlights (display-when-present)
+  /** The activity's bookable variants ("rooms") — captured from the search
+   *  response (option A, zero extra calls); null/absent = none captured. */
+  modalities?: AttractionModality[] | null;
   rating?: number; // display-when-present (see AttractionOffer.rating)
   /** True when the Content API call FAILED (e.g. eval-tier 403 quota) — the
    *  modal shows an honest "couldn't load photos & details" note. */

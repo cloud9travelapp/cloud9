@@ -6,6 +6,7 @@ import { logDiag } from "@/lib/diag";
 import { mockSearchAttractions } from "./mock";
 import type {
   AttractionCategory,
+  AttractionModality,
   AttractionOffer,
   AttractionQuery,
 } from "./types";
@@ -82,7 +83,10 @@ async function liveCallsToday(): Promise<number> {
       admin
         .from("attraction_search_cache")
         .select("key", { count: "exact", head: true })
-        .like("key", "hba%") // all key generations count against the quota
+        // Generation rows only ("hba1|", "hba4|", …): the underscore matches
+        // EXACTLY one char, so captured-modality rows ("hbamod|") never
+        // inflate the call count.
+        .like("key", "hba_|%")
         .gte("created_at", midnight.toISOString()),
       admin
         .from("attraction_content_cache")
@@ -181,6 +185,100 @@ function firstPrice(raw: RawActivity): number | null {
       if (typeof a.amount === "number" && a.amount > 0) nums.push(a.amount);
   }
   return nums.length ? Math.min(...nums) : null;
+}
+
+/**
+ * Map a raw activity's modalities to their compact "rooms" form. Rate
+ * semantics stay SEPARATE and labeled: perPerson from the per-person fields
+ * (amountsFrom / amount.amounts), groupTotal from rateDetails.totalAmount —
+ * the whole-booking price this round's from-price fix stopped mislabeling.
+ * Exported for tests.
+ */
+export function mapModalities(raw: RawActivity): AttractionModality[] {
+  const out: AttractionModality[] = [];
+  for (const m of raw.modalities ?? []) {
+    const name = (m.name ?? "").trim();
+    if (!name) continue;
+    const perPerson = amountsFromMin(m.amountsFrom);
+    const perPersonAlt = (m.amount?.amounts ?? [])
+      .map((a) => a.amount)
+      .filter((n): n is number => typeof n === "number" && n > 0);
+    const pp = perPerson ?? (perPersonAlt.length ? Math.min(...perPersonAlt) : null);
+    const totals = (m.rates ?? [])
+      .flatMap((r) => r.rateDetails ?? [])
+      .map((d) => d.totalAmount)
+      .filter((t): t is number => typeof t === "number" && t > 0);
+    const groupTotal = totals.length ? Math.min(...totals) : null;
+    if (pp == null && groupTotal == null) continue; // nothing priceable
+    const dur = m.duration;
+    const durMin = dur?.metric?.toLowerCase().startsWith("hour")
+      ? Math.round((dur.value ?? 0) * 60)
+      : dur?.metric?.toLowerCase().startsWith("day")
+        ? Math.round((dur.value ?? 0) * 60 * 24)
+        : dur?.value;
+    out.push({
+      name: stripTags(name).slice(0, 80),
+      ...(pp != null ? { perPerson: Math.round(pp) } : {}),
+      // A modality with a per-person rate uses THAT; totalAmount then just
+      // reflects the searched pax and would double-display — group-total is
+      // only the label when per-person truly doesn't exist (private groups).
+      ...(pp == null && groupTotal != null ? { groupTotal: Math.round(groupTotal) } : {}),
+      ...(typeof durMin === "number" && durMin > 0 ? { durationMinutes: durMin } : {}),
+    });
+  }
+  // cheapest first: per-person rates before group totals, each ascending
+  return out
+    .sort(
+      (a, b) =>
+        (a.perPerson ?? a.groupTotal ?? Number.POSITIVE_INFINITY) -
+        (b.perPerson ?? b.groupTotal ?? Number.POSITIVE_INFINITY),
+    )
+    .slice(0, 8);
+}
+
+/** Capture every activity's modalities at search time (option A — the data is
+ *  in the availability response we already paid for). One batch upsert of
+ *  "hbamod|<code>" rows reusing attraction_search_cache; the detail modal
+ *  reads them like the hotel modal reads captured rooms. Best-effort. */
+async function captureModalities(raw: RawActivity[]): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    const rows = raw
+      .map((a) => {
+        const code = a.code ?? a.activityCode;
+        if (!code) return null;
+        const modalities = mapModalities(a);
+        return modalities.length
+          ? { key: `hbamod|${code}`, offers: modalities, created_at: now }
+          : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (rows.length) {
+      await getSupabaseAdmin().from("attraction_search_cache").upsert(rows);
+    }
+  } catch {
+    /* best-effort — the modal just shows no modality list */
+  }
+}
+
+/** Captured modalities for one activity (24h relevance, like the search rows).
+ *  Null = none captured / stale. */
+export async function getCapturedModalities(
+  code: string,
+): Promise<AttractionModality[] | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("attraction_search_cache")
+      .select("offers, created_at")
+      .eq("key", `hbamod|${code}`)
+      .single();
+    if (!data) return null;
+    if (Date.now() - Date.parse(data.created_at) > CACHE_TTL_MS) return null;
+    const list = data.offers as AttractionModality[];
+    return Array.isArray(list) && list.length ? list : null;
+  } catch {
+    return null;
+  }
 }
 
 function activityGeo(a: RawActivity): { latitude?: number; longitude?: number } | undefined {
@@ -368,6 +466,9 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       });
     }
     await cachePut(key, offers);
+    // Option A: modalities ride the availability response we already paid for
+    // — captured per activity, zero extra API calls (the modal's "rooms").
+    await captureModalities(rawActivities);
     // Batch-prefetch the stack's content (images/descriptions) in ONE call —
     // cards and the modal then read the permanent cache instead of firing a
     // live call each. Best-effort; the single-code fallback covers misses.

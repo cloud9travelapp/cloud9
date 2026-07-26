@@ -167,3 +167,42 @@ describe("extractActivityImages (confirmed live media shape)", async () => {
     expect(extractActivityImages({}, ["XLARGE"])).toEqual([]);
   });
 });
+
+describe("mapModalities (the activity's 'rooms')", async () => {
+  const { mapModalities } = await import("@/lib/attractions/hotelbeds");
+
+  it("keeps per-person and group-total semantics SEPARATE and labeled", () => {
+    const raw = {
+      modalities: [
+        {
+          name: "Private Group",
+          rates: [{ rateDetails: [{ totalAmount: 225 }] }], // whole-booking total only
+        },
+        {
+          name: "Shared Group",
+          amountsFrom: [{ amount: 107 }, { amount: 0 }], // per-person; 0 = child row
+          rates: [{ rateDetails: [{ totalAmount: 214 }] }], // pax total — must NOT display
+        },
+      ],
+    };
+    const out = mapModalities(raw);
+    // cheapest per-person first, private group after
+    expect(out[0]).toMatchObject({ name: "Shared Group", perPerson: 107 });
+    expect(out[0].groupTotal).toBeUndefined(); // per-person wins; no double-display
+    expect(out[1]).toMatchObject({ name: "Private Group", groupTotal: 225 });
+    expect(out[1].perPerson).toBeUndefined();
+  });
+
+  it("maps duration (hours→minutes) and drops unpriceable/unnamed modalities", () => {
+    const raw = {
+      modalities: [
+        { name: "Timed", amountsFrom: 40, duration: { value: 2.5, metric: "HOURS" } },
+        { name: "No price at all" },
+        { amountsFrom: 10 }, // unnamed
+      ],
+    };
+    const out = mapModalities(raw);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ name: "Timed", perPerson: 40, durationMinutes: 150 });
+  });
+});

@@ -58,6 +58,16 @@ export async function mockAttractionDetail(
     if (!included.includes(item)) included.push(item);
   }
 
+  // Deterministic modalities — the activity's "rooms": a shared per-person
+  // variant, a longer per-person variant, and a private whole-group variant,
+  // so the modal's rate-label distinction (לאדם vs לקבוצה) is demoable.
+  const base = 25 + (seed % 60);
+  const modalities = [
+    { name: "Shared group tour", perPerson: base, durationMinutes: 120 },
+    { name: "Extended tour with tasting", perPerson: base + 18, durationMinutes: 180 },
+    { name: "Private group (up to 8)", groupTotal: base * 7, durationMinutes: 150 },
+  ];
+
   return {
     mock: true,
     provider: "mock",
@@ -65,5 +75,6 @@ export async function mockAttractionDetail(
     description: DESCRIPTIONS[seed % DESCRIPTIONS.length],
     images,
     included,
+    modalities,
   };
 }
