@@ -142,6 +142,104 @@ export function groupTimeline(items: TimelineItem[]): GroupedTimeline {
   return { days, unscheduled, overlaps };
 }
 
+/** Today as a LOCAL calendar date. `toISOString().slice(0,10)` would be UTC,
+ *  which after 21:00 in Israel is still yesterday — the "today" marker would
+ *  point at the wrong day exactly when someone is checking tonight's plan. */
+export function localDateString(d: Date): string {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** A stay's coverage of one day. `nightIndex` is 1-based; a check-OUT day has
+ *  no nightIndex — you slept there the night before, not that night. */
+export type StayCoverage = {
+  item: TimelineItem;
+  /** Index among the trip's stays — drives alternating band tints so two
+   *  adjacent stays never read as one continuous block. */
+  stayIndex: number;
+  nightIndex: number | null;
+  nights: number;
+  isFirstNight: boolean;
+  isLastNight: boolean;
+  isCheckOut: boolean;
+};
+
+function stayRange(item: TimelineItem): { start: string; end: string } | null {
+  if (item.itemType !== "stay" || !item.date) return null;
+  const snapshot = item.item as { checkOut?: unknown } | null;
+  const end =
+    typeof snapshot?.checkOut === "string" ? snapshot.checkOut : null;
+  // No check-out (a manual stay, or a block written before the dates existed)
+  // → a single-day item. Inventing a length would draw nights that may not
+  // exist. See the handoff's known-limitation note.
+  if (!end || end <= item.date) return null;
+  return { start: item.date, end };
+}
+
+/**
+ * Which stay (if any) covers each date.
+ *
+ * THE NIGHT RULE: you sleep where you check IN. Check-in 10th, check-out 13th
+ * = nights of the 10th, 11th and 12th; the 13th is a check-out, not a night.
+ * That one rule makes the transition day — check out of A, check into B —
+ * resolve on its own: B owns the night, A only shows a departure.
+ */
+export function stayCoverageByDate(
+  items: TimelineItem[],
+): Map<string, StayCoverage[]> {
+  const stays = items
+    .filter((i) => i.itemType === "stay" && i.date)
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+
+  const byDate = new Map<string, StayCoverage[]>();
+  stays.forEach((item, stayIndex) => {
+    const range = stayRange(item);
+    if (!range) return;
+    const nights = daysBetween(range.start, range.end);
+    for (let n = 0; n < nights; n++) {
+      const date = addDays(range.start, n);
+      const entry: StayCoverage = {
+        item,
+        stayIndex,
+        nightIndex: n + 1,
+        nights,
+        isFirstNight: n === 0,
+        isLastNight: n === nights - 1,
+        isCheckOut: false,
+      };
+      byDate.set(date, [...(byDate.get(date) ?? []), entry]);
+    }
+    // The check-out day itself: a departure, never a night.
+    byDate.set(range.end, [
+      ...(byDate.get(range.end) ?? []),
+      {
+        item,
+        stayIndex,
+        nightIndex: null,
+        nights,
+        isFirstNight: false,
+        isLastNight: false,
+        isCheckOut: true,
+      },
+    ]);
+  });
+  return byDate;
+}
+
+/** Booked vs total — the "trip isn't closed yet" signal, without declaring the
+ *  whole document a draft (most of the planning happens before anything is
+ *  booked, and a permanent "none of this is real" banner would undercut it). */
+export function bookingProgress(items: TimelineItem[]): {
+  booked: number;
+  total: number;
+} {
+  return {
+    booked: items.filter((i) => i.state === "booked").length,
+    total: items.length,
+  };
+}
+
 /**
  * Which empty-state to show. A trip that predates the timeline feature looks
  * identical to a brand-new one in the data — but not to the traveler, who

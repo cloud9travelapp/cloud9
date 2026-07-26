@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  bookingProgress,
   emptyStateKind,
   groupTimeline,
+  localDateString,
+  stayCoverageByDate,
+  type StayCoverage,
   type TimelineDay,
 } from "@/lib/timeline/present";
 import {
@@ -78,6 +82,20 @@ export function JourneyPane({
 }: Props) {
   const [adding, setAdding] = useState(false);
   const grouped = useMemo(() => groupTimeline(items), [items]);
+  const coverage = useMemo(() => stayCoverageByDate(items), [items]);
+  const progress = useMemo(() => bookingProgress(items), [items]);
+  const today = useMemo(() => localDateString(new Date()), []);
+  const todayRef = useRef<HTMLDivElement>(null);
+  const scrolledToToday = useRef(false);
+
+  // Open on TODAY when the trip is under way — the difference between a
+  // planning artifact and something you actually open while travelling.
+  // Once per mount, so it can't fight the traveler's own scrolling.
+  useEffect(() => {
+    if (scrolledToToday.current || loading || !todayRef.current) return;
+    scrolledToToday.current = true;
+    todayRef.current.scrollIntoView({ block: "start" });
+  }, [loading, items.length]);
   const overlapIds = useMemo(() => {
     const s = new Set<string>();
     for (const o of grouped.overlaps) {
@@ -131,10 +149,23 @@ export function JourneyPane({
           />
         ) : (
           <>
+            {progress.total > 0 ? (
+              // The "not closed yet" signal WITHOUT declaring the whole
+              // document a draft: most planning happens before anything is
+              // booked, and a blanket "none of this is real" would undercut
+              // exactly the phase this tab exists to serve.
+              <p className="text-xs font-semibold text-c-muted">
+                {progress.booked} מתוך {progress.total} רכיבים מוזמנים
+              </p>
+            ) : null}
+
             {grouped.days.map((day) => (
               <DayBlock
                 key={day.date}
                 day={day}
+                coverage={coverage.get(day.date) ?? []}
+                isToday={day.date === today}
+                dayRef={day.date === today ? todayRef : undefined}
                 overlapIds={overlapIds}
                 onUpdate={onUpdate}
                 onDelete={onDelete}
@@ -213,43 +244,181 @@ function EmptyState({
   );
 }
 
+/** Band tints alternate per stay so two adjacent stays never read as one
+ *  continuous block. The STRIP names the hotel — that's what disambiguates;
+ *  the band only carries continuity. */
+const BAND = [
+  { fill: "bg-c-accent-soft/30", rule: "bg-c-accent/40" },
+  { fill: "bg-c-cloud/50", rule: "bg-c-muted/30" },
+];
+
 function DayBlock({
   day,
+  coverage,
+  isToday,
+  dayRef,
   overlapIds,
   onUpdate,
   onDelete,
 }: {
   day: TimelineDay;
+  coverage: StayCoverage[];
+  isToday: boolean;
+  dayRef?: React.RefObject<HTMLDivElement | null>;
   overlapIds: Set<string>;
   onUpdate: Props["onUpdate"];
   onDelete: Props["onDelete"];
 }) {
+  const night = coverage.find((c) => !c.isCheckOut);
+  const checkOuts = coverage.filter((c) => c.isCheckOut);
+  const band = night ? BAND[night.stayIndex % BAND.length] : null;
+  // A stay item renders as its band + strips, never also as a row — one hotel
+  // must not appear twice on its check-in day.
+  const spanned = new Set(coverage.map((c) => c.item.id));
+  const rows = day.items.filter((i) => !spanned.has(i.id));
+
   return (
-    <section>
-      <h3 className="mb-2 flex items-baseline gap-2">
-        <span className="text-sm font-bold text-c-ink">יום {day.dayNumber}</span>
-        <span dir="ltr" className="text-xs text-c-muted tabular-nums">
-          {formatDay(day.date)}
-        </span>
-      </h3>
-      {day.isEmpty ? (
-        <p className="rounded-card border border-dashed border-c-border px-4 py-3 text-xs text-c-muted">
-          יום פנוי — עדיין לא תכננתם כלום
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {day.items.map((item) => (
-            <TimelineRow
-              key={item.id}
-              item={item}
-              conflicting={overlapIds.has(item.id)}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
-      )}
+    <section ref={dayRef} className="relative">
+      {band ? (
+        <>
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 ${band.fill} ${
+              night?.isFirstNight ? "rounded-t-card" : ""
+            } ${night?.isLastNight ? "rounded-b-card" : ""}`}
+          />
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-y-0 start-0 w-0.5 ${band.rule}`}
+          />
+        </>
+      ) : null}
+
+      <div className={`relative ${band ? "px-3 py-2" : ""}`}>
+        <h3 className="mb-2 flex items-baseline gap-2">
+          <span className="text-sm font-bold text-c-ink">
+            יום {day.dayNumber}
+          </span>
+          <span dir="ltr" className="text-xs text-c-muted tabular-nums">
+            {formatDay(day.date)}
+          </span>
+          {isToday ? (
+            <span className="rounded-full bg-c-accent px-2 py-0.5 text-[10px] font-semibold text-c-on-accent">
+              היום
+            </span>
+          ) : null}
+        </h3>
+
+        {/* Stay strips: recessed on purpose — background, not foreground, so
+            they never compete with actual timed events. */}
+        {checkOuts.map((c) => (
+          <p
+            key={`out-${c.item.id}`}
+            dir="auto"
+            className="mb-1.5 text-[11px] text-c-muted [unicode-bidi:plaintext]"
+          >
+            צ׳ק-אאוט · {c.item.title}
+          </p>
+        ))}
+        {night ? (
+          <StayStrip
+            coverage={night}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+          />
+        ) : null}
+
+        {rows.length === 0 ? (
+          <p className="rounded-card border border-dashed border-c-border px-4 py-3 text-xs text-c-muted">
+            {night
+              ? "אין תוכניות ליום הזה"
+              : "יום פנוי — עדיין לא תכננתם כלום"}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {rows.map((item) => (
+              <TimelineRow
+                key={item.id}
+                item={item}
+                conflicting={overlapIds.has(item.id)}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </section>
+  );
+}
+
+/** The per-day "where you're sleeping" line. On the first night it also
+ *  carries the controls; repeating them on every night would be noise. */
+function StayStrip({
+  coverage,
+  onUpdate,
+  onDelete,
+}: {
+  coverage: StayCoverage;
+  onUpdate: Props["onUpdate"];
+  onDelete: Props["onDelete"];
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const { item, nightIndex, nights, isFirstNight } = coverage;
+  const booked = item.state === "booked";
+
+  return (
+    <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-c-muted">
+      <span dir="auto" className="font-semibold [unicode-bidi:plaintext]">
+        {isFirstNight ? `צ׳ק-אין · ${item.title}` : item.title}
+      </span>
+      <span className="tabular-nums">
+        לילה {nightIndex} מתוך {nights}
+      </span>
+      {isFirstNight ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              void onUpdate(item.id, { state: booked ? "planned" : "booked" })
+            }
+            className={`rounded-full px-2 py-0.5 font-semibold transition-opacity hover:opacity-80 ${
+              booked
+                ? "bg-c-accent text-c-on-accent"
+                : "border border-c-border text-c-muted"
+            }`}
+          >
+            {booked ? "✓ הוזמן" : "טרם הוזמן"}
+          </button>
+          {confirmDelete ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void onDelete(item.id)}
+                className="font-semibold text-c-accent"
+              >
+                כן, מחק
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="text-c-muted"
+              >
+                ביטול
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="transition-opacity hover:opacity-70"
+            >
+              הסרה
+            </button>
+          )}
+        </>
+      ) : null}
+    </div>
   );
 }
 

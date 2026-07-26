@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  bookingProgress,
   daysBetween,
   emptyStateKind,
   groupTimeline,
   itemsOverlap,
   sortWithinDay,
+  stayCoverageByDate,
 } from "@/lib/timeline/present";
 import {
   attractionToTimelineDraft,
@@ -161,6 +163,97 @@ describe("groupTimeline", () => {
       item({ id: "typo", date: "2126-09-10" }),
     ]);
     expect(grouped.days.length).toBeLessThanOrEqual(400);
+  });
+});
+
+describe("stayCoverageByDate — the night rule", () => {
+  const stay = (
+    id: string,
+    checkIn: string,
+    checkOut: string,
+  ): TimelineItem =>
+    item({
+      id,
+      itemType: "stay",
+      category: "lodging",
+      date: checkIn,
+      title: id,
+      item: { checkOut },
+    });
+
+  it("covers the nights you sleep there, and not the check-out day", () => {
+    const cov = stayCoverageByDate([stay("A", "2026-09-10", "2026-09-13")]);
+    expect(cov.get("2026-09-10")?.[0]).toMatchObject({
+      nightIndex: 1,
+      nights: 3,
+      isFirstNight: true,
+      isCheckOut: false,
+    });
+    expect(cov.get("2026-09-12")?.[0]).toMatchObject({
+      nightIndex: 3,
+      isLastNight: true,
+    });
+    // check-out day: a departure, NOT a night
+    expect(cov.get("2026-09-13")?.[0]).toMatchObject({
+      nightIndex: null,
+      isCheckOut: true,
+    });
+  });
+
+  it("resolves the transition day: A checks out, B owns the night", () => {
+    const cov = stayCoverageByDate([
+      stay("A", "2026-09-10", "2026-09-13"),
+      stay("B", "2026-09-13", "2026-09-15"),
+    ]);
+    const day = cov.get("2026-09-13") ?? [];
+    expect(day).toHaveLength(2);
+    const checkout = day.find((c) => c.isCheckOut);
+    const night = day.find((c) => !c.isCheckOut);
+    expect(checkout?.item.id).toBe("A");
+    expect(night?.item.id).toBe("B");
+    expect(night?.nightIndex).toBe(1);
+  });
+
+  it("gives adjacent stays different indices so their bands differ", () => {
+    const cov = stayCoverageByDate([
+      stay("A", "2026-09-10", "2026-09-13"),
+      stay("B", "2026-09-13", "2026-09-15"),
+    ]);
+    expect(cov.get("2026-09-11")?.[0].stayIndex).toBe(0);
+    expect(cov.get("2026-09-14")?.[0].stayIndex).toBe(1);
+  });
+
+  it("ignores a stay with no check-out rather than inventing a length", () => {
+    const cov = stayCoverageByDate([
+      item({
+        id: "manual",
+        itemType: "stay",
+        date: "2026-09-10",
+        item: null,
+      }),
+    ]);
+    expect(cov.size).toBe(0);
+  });
+
+  it("ignores a check-out that isn't after check-in", () => {
+    const cov = stayCoverageByDate([stay("bad", "2026-09-10", "2026-09-10")]);
+    expect(cov.size).toBe(0);
+  });
+});
+
+describe("bookingProgress", () => {
+  it("counts booked against total", () => {
+    expect(
+      bookingProgress([
+        item({ id: "a", state: "booked" }),
+        item({ id: "b" }),
+        item({ id: "c", state: "booked" }),
+      ]),
+    ).toEqual({ booked: 2, total: 3 });
+  });
+
+  it("is zero/zero on an empty timeline", () => {
+    expect(bookingProgress([])).toEqual({ booked: 0, total: 0 });
   });
 });
 
