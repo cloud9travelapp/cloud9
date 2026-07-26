@@ -35,7 +35,11 @@ import { stripMoreBlock } from "@/lib/chat/blocks";
 // responses aren't cut off mid-stream in production.
 export const maxDuration = 60;
 
-type ChatRow = { role: "user" | "assistant"; content: string };
+type ChatRow = {
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string;
+};
 
 /**
  * Ask a cheap model for an updated trip title covering ALL of the trip's
@@ -757,7 +761,7 @@ export async function POST(request: Request) {
         .single(),
       admin
         .from("chat_messages")
-        .select("role, content")
+        .select("role, content, created_at")
         .eq("trip_id", rawTripId)
         .order("created_at", { ascending: false })
         .limit(40),
@@ -1106,6 +1110,23 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
   const preModelMs = Date.now() - t0;
   let firstTokenAt = 0;
 
+  // Cache-economics instrumentation (pricing round groundwork): per-turn token
+  // usage summed across tool-loop hops, plus the pause since the conversation's
+  // previous message — the input for the 5-minute vs 1-hour cache-TTL decision.
+  const lastHistoryAt = history.length
+    ? Date.parse(history[history.length - 1].created_at ?? "")
+    : NaN;
+  const turnGapS = Number.isFinite(lastHistoryAt)
+    ? Math.round((t0 - lastHistoryAt) / 1000)
+    : null;
+  const usageTotals = {
+    hops: 0,
+    input: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    output: 0,
+  };
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       // Set when a stays search hit the card cap this turn — appended after
@@ -1145,6 +1166,15 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             }
           }
           const finalMsg = await msgStream.finalMessage();
+
+          // Every hop is its own API call with its own usage — sum them so the
+          // turn's diag row reflects what the turn actually billed.
+          usageTotals.hops += 1;
+          usageTotals.input += finalMsg.usage.input_tokens;
+          usageTotals.cacheRead += finalMsg.usage.cache_read_input_tokens ?? 0;
+          usageTotals.cacheWrite +=
+            finalMsg.usage.cache_creation_input_tokens ?? 0;
+          usageTotals.output += finalMsg.usage.output_tokens;
 
           if (finalMsg.stop_reason !== "tool_use" || hop >= 3) break;
 
@@ -1244,8 +1274,22 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
         console.log(
           `chat timing: pre-model ${preModelMs}ms, first-token ${
             firstTokenAt ? firstTokenAt - t0 : -1
-          }ms, total ${Date.now() - t0}ms`,
+          }ms, total ${Date.now() - t0}ms | usage: in ${usageTotals.input}, cacheRead ${usageTotals.cacheRead}, cacheWrite ${usageTotals.cacheWrite}, out ${usageTotals.output}, hops ${usageTotals.hops}, gap ${turnGapS ?? "n/a"}s`,
         );
+        // One row per turn → the cache-economics evidence lives in SQL, not in
+        // Vercel's 1-hour log window. gap_s answers the 5-min vs 1-hour TTL
+        // question; cache_read vs input answers "is the cache actually hitting".
+        await logDiag("chat_usage", {
+          trip: trip.id,
+          model: CONCIERGE_MODEL,
+          hops: usageTotals.hops,
+          input: usageTotals.input,
+          cache_read: usageTotals.cacheRead,
+          cache_write: usageTotals.cacheWrite,
+          output: usageTotals.output,
+          gap_s: turnGapS,
+          history_len: history.length,
+        });
         controller.close();
       }
     },
