@@ -43,6 +43,14 @@ yarn-error.log*
 .agents/
 skills-lock.json
 
+# database dumps — NEVER commit these: cloud9-data.sql contains every user's
+# real chat messages, trips and preferences. Keep backups OUTSIDE the repo
+# (e.g. C:\Users\maxai\cloud9-backups\). This is a safety net, not the plan.
+# NOTE: deliberately narrow so supabase/migrations/*.sql stays tracked.
+/cloud9-*.sql
+/*.dump
+/*.backup
+
 # local tooling output (rebuild on demand; never shared)
 # graphify-out/: ~700KB graph.json rewritten wholesale on every build — pure
 # churn in a single-committer repo. Rebuild with `graphify extract . --code-only`.
