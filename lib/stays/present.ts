@@ -1,5 +1,5 @@
 import type { BudgetLevel, StayOffer } from "./types";
-import { filterForBudget } from "./hotelbeds";
+import { dropPriceOutliers, filterForBudget } from "./hotelbeds";
 
 // Route-level PRESENTATION helpers for stay results (card order, star
 // precision). These shape the tool result the model copies verbatim — they
@@ -43,7 +43,11 @@ export function nextStayBatch(
   },
 ): { offers: StayOffer[]; remaining: number } {
   const batch = opts.batch ?? 5;
-  let candidates = filterForBudget(pool, opts.budgetLevel);
+  // Same guard as the first presentation — otherwise "show more" walks straight
+  // into the corrupt offers the first batch excluded. The search already logged
+  // the stay_price_outlier rows for this pool, so this filters silently.
+  const clean = dropPriceOutliers(pool).offers;
+  let candidates = filterForBudget(clean, opts.budgetLevel);
   if (opts.sortBy) candidates = sortOffersBy(candidates, opts.sortBy);
   if (opts.minStars) {
     candidates = candidates.filter((o) => o.stars >= opts.minStars!);

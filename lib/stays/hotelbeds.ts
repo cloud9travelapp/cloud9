@@ -137,6 +137,74 @@ export function mapHotels(hotels: HotelbedsHotel[], query: StayQuery): StayOffer
   return offers.sort((a, b) => a.pricePerNight - b.pricePerNight);
 }
 
+/** An offer priced above this multiple of its OWN star tier's median is treated
+ *  as corrupt provider data. 4× sits well clear of the highest LEGITIMATE ratio
+ *  measured (1.85×) and far below the garbage (10.7×, 20.5×). */
+export const OUTLIER_MEDIAN_MULTIPLE = 4;
+/** Below this many same-star offers a median means nothing — skip the guard
+ *  rather than judge a hotel against two neighbours. Mirrors the budget bands'
+ *  "under 3 offers falls back to the full list" instinct. */
+const OUTLIER_MIN_SAMPLE = 5;
+
+function medianOf(sorted: number[]): number {
+  const n = sorted.length;
+  if (n === 0) return 0;
+  const mid = n >> 1;
+  return n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Drop offers whose price is absurd FOR THEIR OWN STAR TIER.
+ *
+ * Measured 2026-07-27 (Sorrento, 40 hotels): Hotelbeds returned 33,426 EUR for
+ * a 7-night stay in Michelangelo's ONLY room — an "Economy double room, Annex,
+ * first floor, no elevator" — and 52,000 for Europa Stabia. Both 4★. The 4★
+ * median was 362/night, so those sat at 10.7× and 20.5× while the highest
+ * legitimate 4★ reached just 1.85×. Proven provider-side rather than ours:
+ * `hotel.minRate` and the room-level `rate.net` agreed EXACTLY, which exonerated
+ * the mapper (see the two-independent-fields rule in CLAUDE.md). Its BB and RO
+ * rates were also identical — free breakfast is not a real rate structure.
+ *
+ * SAME-STAR, never global: a genuine 5★ palace is ALLOWED to cost multiples of
+ * a 4★ median; a global threshold would punish it for being expensive.
+ *
+ * The MEDIAN is what makes this safe: two corrupt entries among 25 barely move
+ * it, so the garbage cannot raise the very bar that excludes it.
+ */
+export function dropPriceOutliers(offers: StayOffer[]): {
+  offers: StayOffer[];
+  excluded: Array<{ offer: StayOffer; median: number; ratio: number }>;
+} {
+  const pricesByStars = new Map<number, number[]>();
+  for (const o of offers) {
+    const bucket = pricesByStars.get(o.stars);
+    if (bucket) bucket.push(o.pricePerNight);
+    else pricesByStars.set(o.stars, [o.pricePerNight]);
+  }
+  const medians = new Map<number, number>();
+  for (const [stars, prices] of pricesByStars) {
+    if (prices.length < OUTLIER_MIN_SAMPLE) continue;
+    medians.set(stars, medianOf([...prices].sort((a, b) => a - b)));
+  }
+
+  const kept: StayOffer[] = [];
+  const excluded: Array<{ offer: StayOffer; median: number; ratio: number }> = [];
+  for (const o of offers) {
+    const m = medians.get(o.stars);
+    if (m === undefined || m <= 0) {
+      kept.push(o); // too small a sample to judge — never drop on a guess
+      continue;
+    }
+    const ratio = o.pricePerNight / m;
+    if (ratio > OUTLIER_MEDIAN_MULTIPLE) {
+      excluded.push({ offer: o, median: m, ratio: Math.round(ratio * 10) / 10 });
+    } else {
+      kept.push(o);
+    }
+  }
+  return { offers: kept, excluded };
+}
+
 /**
  * Budget bands are PRICE-first: rank terciles over the (cheapest-first)
  * fetched set. Real inventory's star categories don't track price (Milan
@@ -520,6 +588,24 @@ async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
     source: offers.length > 0 ? "live:real" : "live:empty",
     count: offers.length,
   });
+  // One row per excluded hotel, on the LIVE fetch only (cache hits re-serve the
+  // same data — logging them again would inflate the rate). Watch this: if it
+  // fires often on PRODUCTION keys it is no longer a data-quality guard, it is
+  // a signal that the whole price presentation needs rethinking.
+  for (const x of dropPriceOutliers(offers).excluded) {
+    await logDiag("stay_price_outlier", {
+      destination: query.destination,
+      id: x.offer.id,
+      name: x.offer.name.slice(0, 80),
+      stars: x.offer.stars,
+      pricePerNight: x.offer.pricePerNight,
+      totalPrice: x.offer.totalPrice,
+      currency: x.offer.currency,
+      sameStarMedian: x.median,
+      ratio: x.ratio,
+      threshold: OUTLIER_MEDIAN_MULTIPLE,
+    });
+  }
   return offers;
 }
 
@@ -742,9 +828,14 @@ export function detectDeal(
  * .deal; the route splits it out so cards never include it silently).
  */
 function finalizeOffers(all: StayOffer[], query: StayQuery): StayOffer[] {
-  const band = filterForBudget(all, query.budgetLevel);
+  // FIRST: corrupt provider prices out, before anything derives statistics from
+  // them. A 20×-median offer skews the budget terciles AND the same-star deal
+  // median, so leaving it in would corrupt every other card's banding too.
+  // The diag rows are emitted in fetchGeoOffers, where the live fetch happens.
+  const clean = dropPriceOutliers(all).offers;
+  const band = filterForBudget(clean, query.budgetLevel);
   if (query.distanceFilter === "any") return band.slice(0, 8);
-  const shown = selectByDistance(band, medianDistanceKm(all)).slice(0, 8);
+  const shown = selectByDistance(band, medianDistanceKm(clean)).slice(0, 8);
   const deal = detectDeal(band, shown);
   return deal ? [...shown, deal] : shown;
 }
