@@ -399,6 +399,17 @@ async function liveCallsToday(): Promise<number> {
 /** One availability POST (search space provided by the caller: geolocation OR
  *  explicit hotel codes), mapped + cached + rooms captured. Throws on HTTP
  *  errors; the quota guard runs BEFORE this. */
+/** Any quota/rate-limit-ish response headers — mirrors the attractions helper.
+ *  The docs document neither the daily-quota reset nor quota headers, so we
+ *  observe what is actually sent rather than trusting the 50/day assumption. */
+function quotaishHeaders(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  res.headers.forEach((v, k) => {
+    if (/quota|limit|remaining|reset|retry/i.test(k)) out[k] = v;
+  });
+  return out;
+}
+
 async function fetchAvailability(
   searchSpace: Record<string, unknown>,
   cacheKeyStr: string,
@@ -419,6 +430,18 @@ async function fetchAvailability(
       ...searchSpace,
     }),
     cache: "no-store",
+  });
+  // Rate-limit headers on EVERY live Hotel call. The Activities key reports
+  // x-ratelimit-limit 5000 while our DAILY_CALL_BUDGET trips at 45 — if the
+  // Hotel key reports the same, our guard may be degrading to mock far earlier
+  // than Hotelbeds would refuse. Logging the raw headers is what turns that
+  // into evidence: watch whether `remaining` decrements against 5000 across a
+  // day, or whether live calls start failing while it still reads ~4950.
+  // MEASUREMENT ONLY — the guard is unchanged until this is understood.
+  await logDiag("hotel_quota_headers", {
+    destination: query.destination,
+    status: res.status,
+    ...quotaishHeaders(res),
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 200);
@@ -449,14 +472,25 @@ async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
     );
   }
 
+  // INSTRUMENT THE INPUT, NOT JUST THE OUTCOME (same rule as the attractions
+  // trace): `destination` is the model's LABEL, but the search is scoped by
+  // lat/lon + radius + stay shape. Without those, a wrong centroid and a
+  // genuinely thin market are indistinguishable in the trace.
+  const base = {
+    destination: query.destination,
+    lat: query.latitude,
+    lon: query.longitude,
+    radiusKm: SEARCH_RADIUS_KM,
+    checkIn: query.checkIn,
+    checkOut: query.checkOut,
+    guests: query.guests ?? 2,
+    rooms: query.rooms ?? 1,
+  };
+
   const key = cacheKey(query);
   const cached = await cacheGet(key);
   if (cached) {
-    await logDiag("stay_search_trace", {
-      destination: query.destination,
-      source: "cache",
-      count: cached.length,
-    });
+    await logDiag("stay_search_trace", { ...base, source: "cache", count: cached.length });
     return cached;
   }
 
@@ -482,7 +516,7 @@ async function fetchGeoOffers(query: StayQuery): Promise<StayOffer[]> {
   // exhausted"/single-hotel claims become verifiable against reality —
   // a small ski village genuinely returning 1 hotel is then provably honest.
   await logDiag("stay_search_trace", {
-    destination: query.destination,
+    ...base,
     source: offers.length > 0 ? "live:real" : "live:empty",
     count: offers.length,
   });

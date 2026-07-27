@@ -506,7 +506,19 @@ export async function hotelbedsSearchAttractions(
   query: AttractionQuery,
 ): Promise<AttractionOffer[]> {
   const t0 = Date.now();
-  const base = { destination: query.destination, from: query.from, to: query.to };
+  // INSTRUMENT THE INPUT, NOT JUST THE OUTCOME. `destination` is the model's
+  // LABEL; the request is scoped entirely by lat/lon, so a wrong centroid and a
+  // genuinely empty market produce identical traces (200, zero activities)
+  // unless the coordinates are recorded. London 2026-11-25→12-02 cost a full
+  // round trip to this exact blind spot. Same principle as the symmetric
+  // write-path rule: log what we SENT alongside what came back.
+  const base = {
+    destination: query.destination,
+    lat: query.latitude,
+    lon: query.longitude,
+    from: query.from,
+    to: query.to,
+  };
   try {
     activitiesHeaders(); // throws early when keys are missing
     if (typeof query.latitude !== "number" || typeof query.longitude !== "number") {
@@ -538,6 +550,10 @@ export async function hotelbedsSearchAttractions(
       firstKeys: r.firstKeys,
       quotaHeaders: r.quotaHeaders,
       contentPrefetched: r.contentPrefetched,
+      // The exact request shape: gps filter (lat/lon are in `base`) with NO
+      // radius, plus the two constants that silently decide the result set.
+      // A 200-with-zero from a bad paxes looks identical to empty inventory.
+      request: { filter: "gps", paxAge: DEFAULT_PAX_AGE, itemsPerPage: ITEMS_PER_PAGE },
       ms: Date.now() - t0,
     });
     // Honest: a genuine empty live result returns [] (the concierge says
