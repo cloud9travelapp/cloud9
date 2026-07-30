@@ -32,7 +32,17 @@ export type AttractionQuery = {
 export type AttractionOffer = {
   id: string; // "hb-<code>" (hotelbeds) | "mock-<seed>-<i>" (mock)
   name: string;
+  /** Our neutral bucket — INTERNAL ONLY (sort chips, mock seeds, filtering).
+   *  Never displayed: when inference has nothing to go on it falls back to
+   *  "tours", and a guessed label shown as fact is what we keep getting burned
+   *  by. The card renders `categoryLabel` instead. */
   category: AttractionCategory;
+  /** The PROVIDER'S OWN classification (Hotelbeds `content.segmentation`), or
+   *  the mock's authoritative seed. Display-when-present: absent means the
+   *  provider told us nothing, and the card then shows no category line at all
+   *  rather than inventing one. More specific than our nine buckets
+   *  ("Walking tours" beats "tours") and it is a fact rather than a guess. */
+  categoryLabel?: string;
   area?: string; // neighbourhood / location proper noun
   durationMinutes?: number; // for the "duration" sort + card display
   /** Per-person "from" price. ABSENT when the provider carries no positive

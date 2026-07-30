@@ -180,6 +180,19 @@ export function durationMinutesFrom(
   return undefined; // day | segment | unknown | absent → not a trustworthy length
 }
 
+/** The provider's OWN category label, for DISPLAY — first segmentation entry,
+ *  tags stripped and length-capped. Undefined when the provider supplies none,
+ *  which is the point: the card then shows no category rather than our inferred
+ *  guess. Standing rule (four instances now — coordinates, the facilities
+ *  catalog, rooms, and this): before deriving a displayed value, check whether
+ *  the provider already supplies it directly. */
+function segmentationLabel(raw: RawActivity): string | undefined {
+  const first = (raw.content?.segmentation ?? [])
+    .map((s) => stripTags(s?.name ?? "").trim())
+    .find((n) => n.length > 0);
+  return first ? first.slice(0, 40) : undefined;
+}
+
 /** Map the provider's OWN taxonomy to our neutral category key.
  *
  *  Reads `content.segmentation` ONLY. The description used to be concatenated
@@ -385,6 +398,9 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
       id: `hb-${code}`,
       name,
       category: toCategory(a),
+      // The provider's own label, shown verbatim on the card. Omitted entirely
+      // when segmentation is absent — no category line beats a wrong one.
+      ...(segmentationLabel(a) ? { categoryLabel: segmentationLabel(a) } : {}),
       durationMinutes: typeof durMin === "number" && durMin > 0 ? durMin : undefined,
       ...(fromPrice != null ? { fromPrice: Math.round(fromPrice) } : {}),
       currency: normalizeCurrency(a.currencyName ?? a.currency),

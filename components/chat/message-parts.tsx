@@ -68,7 +68,8 @@ export type StaysPayload = {
 export type AttractionOfferView = {
   id: string;
   name: string;
-  category: string; // neutral key, localized in the UI
+  category: string; // neutral key — INTERNAL (sorting/filtering), never displayed
+  categoryLabel?: string; // provider's own label; display-when-present
   area?: string;
   durationMinutes?: number;
   fromPrice?: number; // per-person "from" price; absent = no price line (never "0")
@@ -1178,10 +1179,21 @@ export function AttractionCard({
           <div dir="auto" className="truncate text-sm font-semibold text-c-ink">
             {offer.name}
           </div>
-          <div dir="auto" className="truncate text-xs text-c-muted">
-            {attractionCategoryLabel(lang, offer.category)}
-            {offer.area ? ` · ${offer.area}` : ""}
-          </div>
+          {/* Provider's own label only. Absent → the line is dropped entirely
+              (or shows just the area): never our inferred "tours" default,
+              which would be a guess printed as fact. */}
+          {offer.categoryLabel || offer.area ? (
+            <div dir="auto" className="truncate text-xs text-c-muted">
+              {[
+                offer.categoryLabel
+                  ? attractionCategoryLabel(lang, offer.categoryLabel)
+                  : null,
+                offer.area || null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-none flex-col items-end">
           {onToggleHeart ? (

@@ -208,6 +208,10 @@ export async function mockSearchAttractions(
       id: `mock-${seed.toString(36)}-${i}`,
       name,
       category,
+      // In the mock the seeded category IS ground truth, so it is legitimate to
+      // display. Passing the neutral key keeps the card's localization working
+      // (attractionCategoryLabel maps known keys, prints anything else as-is).
+      categoryLabel: category,
       area,
       durationMinutes,
       fromPrice,
