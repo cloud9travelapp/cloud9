@@ -29,11 +29,15 @@ const DEFAULT_PAX_AGE = 30;
 const FETCH_TIMEOUT_MS = 8000; // abort a slow/hung Activities call → fast fallback
 
 // ── Cache + budget guard (best-effort; the app still works if Supabase is down)
-// Key prefix carries a GENERATION ("hba5" since offers carry latitude/longitude)
-// so a mapping change can invalidate stale cached offers without a migration.
+// Key prefix carries a GENERATION ("hba6" since duration and category mapping
+// were corrected — cached offers still hold 1440-minute "durations" and
+// description-polluted categories) so a mapping change invalidates stale
+// cached offers without a migration. The quota counter matches "hba_|%", where
+// the underscore is EXACTLY one char, so a generation bump can never blind the
+// daily guard — the trap the stays counter hit on hb1→hb2.
 function cacheKey(query: AttractionQuery): string {
   return [
-    "hba5",
+    "hba6",
     (query.latitude ?? 0).toFixed(2),
     (query.longitude ?? 0).toFixed(2),
     query.from,
@@ -150,12 +154,47 @@ function amountsFromMin(v: RawAmountsFrom | undefined): number | null {
   return null;
 }
 
-/** Map a Hotelbeds segmentation/type code or label to our neutral category. */
+/** Activity duration in minutes — ONLY from a metric that genuinely denotes
+ *  LENGTH.
+ *
+ *  A `day` metric is not a duration. "Immersive Audio Walks Paris" reports
+ *  {value:1, metric:"days"} = 1440 min, and the card printed "24h" for a
+ *  walking tour (the Munich walking tour and the Zurich chocolate tour showed
+ *  the same). That is ticket VALIDITY — an open ticket usable any time that
+ *  day — not how long the activity takes. Multi-day values are equally unsafe
+ *  to render as hours ("48h" for a 2-day trip is nonsense), and an absent or
+ *  unrecognised metric has no known unit at all, so its raw value must never
+ *  be treated as minutes.
+ *
+ *  In every one of those cases show NOTHING rather than a wrong number — the
+ *  same rule as never inventing a timeline time and never printing a 0 price.
+ *  A missing duration costs a line on the card; a wrong one costs trust. */
+export function durationMinutesFrom(
+  dur?: { value?: number; metric?: string },
+): number | undefined {
+  const v = dur?.value;
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return undefined;
+  const metric = dur?.metric?.toLowerCase() ?? "";
+  if (metric.startsWith("hour")) return Math.round(v * 60);
+  if (metric.startsWith("minute") || metric.startsWith("min")) return Math.round(v);
+  return undefined; // day | segment | unknown | absent → not a trustworthy length
+}
+
+/** Map the provider's OWN taxonomy to our neutral category key.
+ *
+ *  Reads `content.segmentation` ONLY. The description used to be concatenated
+ *  into this signal, which is how an audio WALKING tour whose blurb mentioned a
+ *  "show" matched "nightlife" — tested before the "walking" → culture rule — and
+ *  shipped that label on the card. Same class as the tuk-tuk filed under
+ *  "Food & drink". A blurb is prose about the activity, not a classification of
+ *  it, and mixing it in guarantees false positives on any long text.
+ *
+ *  Every segmentation entry is read, not just the first: an activity tagged
+ *  ["Walking tours", "Culture"] should not hinge on array order. */
 function toCategory(raw: RawActivity): AttractionCategory {
-  const label =
-    (raw.content?.segmentation?.[0]?.name ?? "").toLowerCase() +
-    " " +
-    (raw.content?.description ?? "").toLowerCase();
+  const label = (raw.content?.segmentation ?? [])
+    .map((s) => (s?.name ?? "").toLowerCase())
+    .join(" ");
   const has = (...ws: string[]) => ws.some((w) => label.includes(w));
   if (has("museum", "gallery", "exhibit")) return "museums";
   if (has("food", "wine", "tasting", "culinary", "dinner", "cooking")) return "food";
@@ -210,12 +249,7 @@ export function mapModalities(raw: RawActivity): AttractionModality[] {
       .filter((t): t is number => typeof t === "number" && t > 0);
     const groupTotal = totals.length ? Math.min(...totals) : null;
     if (pp == null && groupTotal == null) continue; // nothing priceable
-    const dur = m.duration;
-    const durMin = dur?.metric?.toLowerCase().startsWith("hour")
-      ? Math.round((dur.value ?? 0) * 60)
-      : dur?.metric?.toLowerCase().startsWith("day")
-        ? Math.round((dur.value ?? 0) * 60 * 24)
-        : dur?.value;
+    const durMin = durationMinutesFrom(m.duration);
     out.push({
       name: stripTags(name).slice(0, 80),
       ...(pp != null ? { perPerson: Math.round(pp) } : {}),
@@ -333,12 +367,9 @@ function mapActivities(raw: RawActivity[], query: AttractionQuery): AttractionOf
     // No positive price anywhere → an honest PRICE-LESS offer (no price line on
     // the card) — never print 0 and never fabricate a number.
     const fromPrice = firstPrice(a);
-    const dur = a.content?.duration ?? a.modalities?.[0]?.duration;
-    const durMin = dur?.metric?.toLowerCase().startsWith("hour")
-      ? Math.round((dur.value ?? 0) * 60)
-      : dur?.metric?.toLowerCase().startsWith("day")
-        ? Math.round((dur.value ?? 0) * 60 * 24)
-        : dur?.value;
+    const durMin = durationMinutesFrom(
+      a.content?.duration ?? a.modalities?.[0]?.duration,
+    );
     const geo = activityGeo(a);
     const distanceKm =
       typeof query.latitude === "number" &&
