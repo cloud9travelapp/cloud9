@@ -1,4 +1,5 @@
 import { ownedTrip } from "@/lib/api/owned-trip";
+import { logUserEvent } from "@/lib/analytics";
 import {
   FAVORITE_ITEM_TYPES,
   providerFromOfferId,
@@ -97,6 +98,20 @@ export async function POST(
       { status: 503 },
     );
   }
+
+  // Hearts are the strongest taste signal we collect, so they are worth
+  // counting. The upsert makes re-hearting idempotent in the table, but this
+  // fires on every successful call — a repeat heart of the same item is rare
+  // and harmless, and de-duplicating here would need a read we do not want.
+  await logUserEvent("favorite_added", {
+    userId: own.userId,
+    tripId: own.tripId,
+    payload: {
+      itemType,
+      provider: providerFromOfferId(itemCode),
+      code: itemCode,
+    },
+  });
   return Response.json({ ok: true });
 }
 

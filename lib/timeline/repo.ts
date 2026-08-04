@@ -1,5 +1,6 @@
 import "server-only";
 import type { getSupabaseAdmin } from "@/lib/supabase";
+import { logUserEvent } from "@/lib/analytics";
 import {
   isTimelineCategory,
   isTimelineSource,
@@ -121,6 +122,22 @@ export async function insertTimelineItem(
     .single();
 
   if (!error && data) {
+    // Emitted HERE, inside the one write path, so BOTH callers (the REST route
+    // and the chat piggyback) report it by construction — the symmetric
+    // observability rule, enforced structurally rather than by remembering to
+    // add a line at each call site. Deliberately NOT emitted on the deduped
+    // branch below: a retry of the same user action is one action, and counting
+    // it twice would inflate the funnel.
+    await logUserEvent("timeline_item_added", {
+      userId: ctx.userId,
+      tripId: ctx.tripId,
+      payload: {
+        itemType: draft.itemType,
+        source: draft.source,
+        category: draft.category,
+        state: draft.state,
+      },
+    });
     return { ok: true, item: toTimelineItem(data as DbRow), deduped: false };
   }
 

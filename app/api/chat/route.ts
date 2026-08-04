@@ -8,6 +8,7 @@ import { detectReplyLanguage } from "@/lib/language";
 import { sanitizeTripTitle } from "@/lib/trip-title";
 import { logDiag } from "@/lib/diag";
 import { sendAlert } from "@/lib/alert";
+import { logUserEvent } from "@/lib/analytics";
 import {
   decideLimit,
   limitMessage,
@@ -353,6 +354,36 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
  * the model apologizes and the chat keeps going — the flight layer never throws
  * into the stream.
  */
+/** The funnel-relevant fields of a search tool call. An allow-list, NOT the raw
+ *  input: it keeps free text (the model's `keyword`, hotel names) and anything
+ *  future out of the analytics table by construction. user_events must never
+ *  accumulate personal data by accident. */
+function searchCriteria(input: unknown): Record<string, unknown> {
+  const q = (input ?? {}) as Record<string, unknown>;
+  const pick = [
+    "destination", "origin", "checkIn", "checkOut", "from", "to",
+    "date", "guests", "rooms", "budgetLevel", "category", "sortBy",
+  ];
+  const out: Record<string, unknown> = {};
+  for (const k of pick) {
+    const v = q[k];
+    if (typeof v === "string" || typeof v === "number") out[k] = v;
+  }
+  return out;
+}
+
+/** How many offers a search tool result carried. Best-effort — a result that
+ *  isn't offer JSON (an error sentence) simply yields undefined rather than
+ *  a misleading zero. */
+function offersIn(result: string): number | undefined {
+  try {
+    const parsed = JSON.parse(result) as { offers?: unknown };
+    return Array.isArray(parsed.offers) ? parsed.offers.length : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function runFlightSearch(input: unknown): Promise<string> {
   try {
     const q = (input ?? {}) as Partial<FlightQuery>;
@@ -984,6 +1015,10 @@ export async function POST(request: Request) {
     }
     trip = data;
     history = [];
+    // The funnel's first step. Emitted only on the CREATE branch, so it counts
+    // conversations started rather than messages sent — the denominator of the
+    // conversation-to-selection rate.
+    await logUserEvent("trip_created", { userId: user.id, tripId: trip.id });
   }
 
   const isFirstMessage = history.length === 0;
@@ -1019,6 +1054,30 @@ export async function POST(request: Request) {
         parsed.draft,
       );
       timelineWrite = result.ok ? "ok" : "failed";
+      // THE HEADLINE METRIC. Conversation-to-selection is defined on STAYS, and
+      // this is where a selection becomes a fact: the STRUCTURED payload the
+      // client sent, not a localized "בחרתי"/"Selected" prefix that would rot
+      // the moment the copy changes. Documented coupling: this metric depends on
+      // the timeline capture path. `deduped` means a retry of the same action —
+      // counting it would inflate the numerator of the rate we care most about.
+      if (result.ok && !result.deduped) {
+        const snap = (parsed.draft.item ?? {}) as Record<string, unknown>;
+        await logUserEvent("offer_selected", {
+          userId: user.id,
+          tripId: trip.id,
+          payload: {
+            itemType: parsed.draft.itemType,
+            code: typeof snap.id === "string" ? snap.id : undefined,
+            price:
+              typeof snap.pricePerNight === "number"
+                ? snap.pricePerNight
+                : typeof snap.fromPrice === "number"
+                  ? snap.fromPrice
+                  : undefined,
+            currency: typeof snap.currency === "string" ? snap.currency : undefined,
+          },
+        });
+      }
       if (!result.ok) {
         await logDiag("timeline_write_failed", {
           trip: trip.id,
@@ -1392,14 +1451,29 @@ ${tripPrefs.length ? `This trip's stated preferences: ${tripPrefs.join("; ")}.\n
             let result: string;
             if (block.name === "search_flights") {
               result = await runFlightSearch(block.input);
+              await logUserEvent("flight_search", {
+                userId: user.id,
+                tripId: trip.id,
+                payload: { ...searchCriteria(block.input), resultCount: offersIn(result) },
+              });
             } else if (block.name === "search_stays") {
               const r = await runStaySearch(block.input);
               result = r.result;
               if (r.moreKey) staysMoreKey = r.moreKey;
+              await logUserEvent("stay_search", {
+                userId: user.id,
+                tripId: trip.id,
+                payload: { ...searchCriteria(block.input), resultCount: offersIn(result) },
+              });
             } else if (block.name === "search_attractions") {
               const r = await runAttractionSearch(block.input);
               result = r.result;
               if (r.moreKey) attractionsMoreKey = r.moreKey;
+              await logUserEvent("attraction_search", {
+                userId: user.id,
+                tripId: trip.id,
+                payload: { ...searchCriteria(block.input), resultCount: offersIn(result) },
+              });
             } else if (block.name === "get_hotel_details") {
               result = await runHotelDetails(block.input);
             } else if (block.name === "check_favorites") {

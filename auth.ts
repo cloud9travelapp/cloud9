@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { recordLogin } from "@/lib/analytics";
 
 /**
  * Auth.js (NextAuth v5) configuration.
@@ -20,7 +21,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (account?.provider !== "google") return true;
 
       try {
-        const { error } = await getSupabaseAdmin()
+        // .select("id") so the login can be logged against the user's uuid —
+        // sessions are stateless JWTs, so this upsert is the ONLY moment a
+        // sign-in touches the database and the only place that id is at hand.
+        const { data, error } = await getSupabaseAdmin()
           .from("users")
           .upsert(
             {
@@ -30,10 +34,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               image: user.image,
             },
             { onConflict: "google_id" },
-          );
+          )
+          .select("id")
+          .single();
 
         if (error) {
           console.error("Failed to save user to Supabase:", error.message);
+        } else if (data?.id) {
+          // Best-effort and self-reporting; never blocks or fails sign-in.
+          await recordLogin(data.id);
         }
       } catch (err) {
         // Never block sign-in on a persistence failure; log for reconciliation.
