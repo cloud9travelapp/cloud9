@@ -7,6 +7,13 @@ import { getStayDetail } from "@/lib/stays/detail";
 import { detectReplyLanguage } from "@/lib/language";
 import { sanitizeTripTitle } from "@/lib/trip-title";
 import { logDiag } from "@/lib/diag";
+import { sendAlert } from "@/lib/alert";
+import {
+  decideLimit,
+  limitMessage,
+  usdFromTokens,
+  type LimitDecision,
+} from "@/lib/chat/rate-limit";
 import { searchFlights, IS_MOCK_PROVIDER } from "@/lib/flights/provider";
 import type { FlightQuery } from "@/lib/flights/types";
 import {
@@ -740,6 +747,138 @@ export async function POST(request: Request) {
       message: (userError?.message ?? "no user row").slice(0, 200),
     });
     return Response.json({ error: "Could not load your profile" }, { status: 500 });
+  }
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  // Runs BEFORE trip resolution (so a limited request never creates an empty
+  // trip row) and before any model call, so a rejected turn costs ZERO tokens.
+  // Counting rides on chat_messages, which already stores one row per turn and
+  // already has both indexes — no new table, no migration.
+  {
+    const now = new Date();
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const dayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    ).toISOString();
+
+    let decision: LimitDecision = { allowed: true };
+    try {
+      const [tripRes, hourRes, dayRes, usageRes] = await Promise.all([
+        rawTripId
+          ? admin
+              .from("chat_messages")
+              .select("id", { count: "exact", head: true })
+              .eq("trip_id", rawTripId)
+              .eq("role", "user")
+          : Promise.resolve({ count: 0 }),
+        // created_at (not just a count) — the oldest row in the window is what
+        // makes "try again in N minutes" a real number instead of a guess.
+        admin
+          .from("chat_messages")
+          .select("created_at")
+          .eq("user_id", user.id)
+          .eq("role", "user")
+          .gte("created_at", hourAgo)
+          .order("created_at", { ascending: true })
+          .limit(500),
+        admin
+          .from("chat_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("role", "user")
+          .gte("created_at", dayStart),
+        // PostgREST cannot sum inside jsonb, so today's usage rows are summed
+        // here. Bounded by the per-user caps above, so this stays small.
+        admin
+          .from("diag_events")
+          .select("detail")
+          .eq("kind", "chat_usage")
+          .gte("at", dayStart)
+          .limit(5000),
+      ]);
+
+      const hourRows = (hourRes.data ?? []) as Array<{ created_at: string }>;
+      const usageRows = (usageRes.data ?? []) as Array<{
+        detail: Record<string, unknown> | null;
+      }>;
+      const num = (v: unknown) => (typeof v === "number" ? v : Number(v) || 0);
+      const spent = usageRows.reduce(
+        (acc, r) => {
+          const d = r.detail ?? {};
+          acc.input += num(d.input);
+          acc.cacheRead += num(d.cache_read);
+          acc.cacheWrite += num(d.cache_write);
+          acc.output += num(d.output);
+          return acc;
+        },
+        { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
+      );
+
+      decision = decideLimit({
+        now,
+        tripTurns: tripRes.count ?? 0,
+        userTurnsHour: hourRows.length,
+        userTurnsDay: dayRes.count ?? 0,
+        globalUsdToday: usdFromTokens(spent),
+        oldestInHourWindow: hourRows[0]
+          ? new Date(hourRows[0].created_at)
+          : null,
+      });
+    } catch (err) {
+      // FAIL OPEN, LOUDLY (Max's call). A Supabase blip would otherwise take
+      // chat down for everyone — a certain product outage traded against a
+      // hypothetical abuse that must coincide with the outage. The exposure
+      // window is bounded by the outage itself.
+      await logDiag("chat_rate_limit_check_failed", {
+        user: user.id,
+        trip: rawTripId,
+        error: String(err).slice(0, 300),
+      });
+    }
+
+    if (!decision.allowed) {
+      // History isn't loaded yet, so language is decided from this message
+      // alone; ambiguous falls back to Hebrew exactly as the standing policy says.
+      // "other" → English, the deterministic fallback the language policy already
+      // uses for non-Hebrew turns. We only ship he/en copy.
+      const lang = detectReplyLanguage(message, []) === "he" ? "he" : "en";
+      const text = limitMessage(decision.scope, lang, decision.retryAfterMin);
+
+      await logDiag("chat_rate_limited", {
+        scope: decision.scope,
+        user: user.id,
+        trip: rawTripId,
+        count: decision.count,
+        limit: decision.limit,
+        retryAfterMin: decision.retryAfterMin,
+      });
+
+      if (decision.scope === "global_day") {
+        // The app is now down for EVERYONE until UTC midnight. A breaker nobody
+        // knows tripped is an outage that cannot be responded to.
+        await logDiag("chat_breaker_tripped", {
+          spentUsd: decision.count,
+          limitUsd: decision.limit,
+          minutesUntilReset: decision.retryAfterMin,
+        });
+        await sendAlert(
+          "Cloud9: daily spend breaker TRIPPED",
+          `Chat is blocked for ALL users until UTC midnight (~${decision.retryAfterMin} min).\nSpent today: $${decision.count} of $${decision.limit}.`,
+        );
+      }
+
+      // Delivered as a normal assistant reply rather than an error: the branded
+      // error bubble offers RETRY, which cannot help here and would invite
+      // hammering the very endpoint we are protecting. Nothing is persisted —
+      // the user's message was not saved, so no turn is consumed.
+      return new Response(text, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Rate-Limited": decision.scope,
+        },
+      });
+    }
   }
 
   // Resolve the trip: use the one the client sent (must belong to the user), or
