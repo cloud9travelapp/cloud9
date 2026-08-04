@@ -27,8 +27,7 @@ export const RATE_LIMITS = {
   tripTurns: 100,
   /** ~3 median conversations inside an hour. Deliberately above the p95
    *  conversation (~23 turns) — throttling a genuine user is the worse failure. */
-  // TEMP-LIVE-TEST 2026-07-30 — real value is 40. RESTORE IMMEDIATELY AFTER.
-  userTurnsPerHour: 2,
+  userTurnsPerHour: 40,
   /** ~11 median conversations in a day; bounds one bad account to ~$11. */
   userTurnsPerDay: 150,
   /** THE ONLY LIMIT THAT ACTUALLY CAPS THE BILL. Per-user caps assume the
