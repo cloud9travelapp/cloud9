@@ -853,6 +853,17 @@ export async function POST(request: Request) {
         retryAfterMin: decision.retryAfterMin,
       });
 
+      // TEMP-LIVE-TEST 2026-07-30 — proves the sendAlert path end to end without
+      // ever crossing the global threshold, so chat is never blocked for anyone.
+      // The delivery mechanism is identical whichever scope calls it.
+      // RESTORE: delete this block.
+      if (decision.scope !== "global_day") {
+        await sendAlert(
+          "Cloud9: alert pipeline TEST (not a real incident)",
+          `Fired from scope "${decision.scope}" to verify the webhook end to end. No outage. Limit ${decision.count}/${decision.limit}.`,
+        );
+      }
+
       if (decision.scope === "global_day") {
         // The app is now down for EVERYONE until UTC midnight. A breaker nobody
         // knows tripped is an outage that cannot be responded to.
