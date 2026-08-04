@@ -991,8 +991,55 @@ const ATTRACTION_CATEGORY_LABELS: Record<Lang, Record<string, string>> = {
   },
 };
 
+/**
+ * PROVIDER segmentation labels → localized text.
+ *
+ * A category is a DESCRIPTION, not an identifier: an activity NAME stays in its
+ * original language because you would Google it or show it at the door, but
+ * "Walking tours" on a Hebrew card is just untranslated UI. Descriptions get
+ * translated (Max, 2026-07-30).
+ *
+ * Translated HERE rather than by requesting content in a second language —
+ * that would double the permanent content cache and burn the 50/day quota for
+ * text we can map for free.
+ *
+ * PROVISIONAL: the cache stores mapped offers, not raw segmentation, so we have
+ * observed ZERO real labels so far. These are plausible generic terms, NOT a
+ * transcribed taxonomy. `attraction_search_trace` now records the distinct
+ * segmentation labels of every live search — populate this map from those rows
+ * and delete any entry the provider never actually sends. Anything unmatched
+ * prints verbatim, which is the safe failure (show less rather than show wrong).
+ */
+const SEGMENT_LABELS: Record<Lang, Record<string, string>> = {
+  he: {
+    "tours": "סיורים",
+    "walking tours": "סיורים רגליים",
+    "guided tours": "סיורים מודרכים",
+    "excursions": "טיולים",
+    "day trips": "טיולי יום",
+    "museums": "מוזיאונים",
+    "tickets": "כרטיסים",
+    "shows": "מופעים",
+    "gastronomy": "אוכל ושתייה",
+    "water activities": "פעילויות מים",
+    "adventure": "הרפתקאות",
+    "nature": "טבע",
+    "culture": "תרבות",
+    "wellness": "ספא ורוגע",
+    "transfers": "העברות",
+  },
+  en: {}, // provider labels already arrive in English
+};
+
+/** Localize a category label. Accepts either one of our neutral keys (the mock
+ *  seeds those, and they ARE ground truth there) or a provider segmentation
+ *  label. Unknown values print verbatim rather than being replaced by a guess. */
 export function attractionCategoryLabel(lang: Lang, key: string): string {
-  return ATTRACTION_CATEGORY_LABELS[lang][key] ?? key;
+  return (
+    ATTRACTION_CATEGORY_LABELS[lang][key] ??
+    SEGMENT_LABELS[lang][key.trim().toLowerCase()] ??
+    key
+  );
 }
 
 const A_LABELS: Record<

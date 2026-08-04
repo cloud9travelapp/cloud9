@@ -101,7 +101,7 @@ function CloudCloseButton({ label, onClose }: { label: string; onClose: () => vo
 export function AttractionDetailModal({
   attractionId,
   name,
-  category,
+  categoryLabel,
   area,
   durationMinutes,
   fromPrice,
@@ -114,7 +114,9 @@ export function AttractionDetailModal({
 }: {
   attractionId: string;
   name: string;
-  category: string;
+  /** Provider's own label, display-when-present — same field and same rule as
+   *  the card. Both surfaces must agree, or one gets "fixed" wrongly later. */
+  categoryLabel?: string;
   area?: string;
   durationMinutes?: number;
   fromPrice?: number; // absent = no price line (never "0")
@@ -172,7 +174,7 @@ export function AttractionDetailModal({
   }, [requestClose]);
 
   const metaBits = [
-    attractionCategoryLabel(lang, category),
+    categoryLabel ? attractionCategoryLabel(lang, categoryLabel) : null,
     durationMinutes ? durationLabel(durationMinutes) : null,
     area,
   ].filter(Boolean);

@@ -433,6 +433,12 @@ type FetchResult = {
   firstKeys: string[];
   quotaHeaders: Record<string, string>;
   contentPrefetched: number;
+  /** Distinct provider segmentation labels in this response. We localize these
+   *  for display (SEGMENT_LABELS in message-parts), but have observed NONE so
+   *  far because the cache stores mapped offers rather than the raw response —
+   *  so the trace is the only way to learn the real taxonomy. Populate the
+   *  translation map from these rows instead of guessing at it. */
+  segments: string[];
 };
 
 /** Any quota/rate-limit-ish response headers — the docs document neither the
@@ -536,6 +542,15 @@ async function fetchActivities(query: AttractionQuery, key: string): Promise<Fet
       firstKeys: rawActivities[0] ? Object.keys(rawActivities[0]) : [],
       quotaHeaders: quotaishHeaders(res),
       contentPrefetched,
+      segments: [
+        ...new Set(
+          rawActivities.flatMap((a) =>
+            (a.content?.segmentation ?? [])
+              .map((s) => (s?.name ?? "").trim())
+              .filter((n) => n.length > 0),
+          ),
+        ),
+      ].slice(0, 25),
     };
   } finally {
     clearTimeout(timer);
@@ -601,6 +616,9 @@ export async function hotelbedsSearchAttractions(
       // radius, plus the two constants that silently decide the result set.
       // A 200-with-zero from a bad paxes looks identical to empty inventory.
       request: { filter: "gps", paxAge: DEFAULT_PAX_AGE, itemsPerPage: ITEMS_PER_PAGE },
+      // The provider's real category vocabulary — the evidence base for the
+      // display translation map, which is currently seeded with guesses.
+      segments: r.segments,
       ms: Date.now() - t0,
     });
     // Honest: a genuine empty live result returns [] (the concierge says

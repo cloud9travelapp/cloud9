@@ -499,7 +499,7 @@ export default function ChatClient({
         <AttractionDetailModal
           attractionId={attractionDetailFor.offer.id}
           name={attractionDetailFor.offer.name}
-          category={attractionDetailFor.offer.category}
+          categoryLabel={attractionDetailFor.offer.categoryLabel}
           area={attractionDetailFor.offer.area}
           durationMinutes={attractionDetailFor.offer.durationMinutes}
           fromPrice={attractionDetailFor.offer.fromPrice}
