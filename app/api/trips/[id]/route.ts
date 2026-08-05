@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { ownedTrip } from "@/lib/api/owned-trip";
 import { logDiag } from "@/lib/diag";
@@ -114,10 +113,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.googleId) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  // ownedTrip() rather than a second inline copy of the same check. The copy
+  // was correct, but a duplicated ownership rule is exactly what the shared
+  // helper exists to prevent — and the copy that drifts is always the one
+  // nobody remembers exists.
+  const own = await ownedTrip(params);
+  if ("error" in own) return own.error;
 
   let body: { name?: unknown };
   try {
@@ -133,46 +134,27 @@ export async function PATCH(
     );
   }
 
-  let admin: ReturnType<typeof getSupabaseAdmin>;
-  try {
-    admin = getSupabaseAdmin();
-  } catch (err) {
-    console.error("Supabase client init failed:", err);
-    return Response.json(
-      { error: "Server misconfigured: Supabase environment variables are missing." },
-      { status: 500 },
-    );
-  }
-
-  const { data: user } = await admin
-    .from("users")
-    .select("id")
-    .eq("google_id", session.user.googleId)
-    .single();
-  if (!user) {
-    return Response.json({ error: "Could not load your profile" }, { status: 500 });
-  }
-
-  const { id } = await params;
   // name_is_custom locks the title against the auto-namer. If the column
   // isn't migrated yet, fall back to a plain rename so the feature still works.
-  let result = await admin
+  // Both writes stay compound-filtered (id AND user_id) even though ownedTrip
+  // already passed: the filter is the guarantee, not the earlier check.
+  let result = await own.admin
     .from("trips")
     .update({
       name,
       name_is_custom: true,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("id", own.tripId)
+    .eq("user_id", own.userId)
     .select("id, name")
     .single();
   if (result.error) {
-    result = await admin
+    result = await own.admin
       .from("trips")
       .update({ name, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("user_id", user.id)
+      .eq("id", own.tripId)
+      .eq("user_id", own.userId)
       .select("id, name")
       .single();
   }
