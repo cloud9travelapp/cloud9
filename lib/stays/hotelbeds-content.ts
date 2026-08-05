@@ -430,6 +430,21 @@ async function fetchHotelbedsContentLive(
     const roomImageCounts = Object.values(content.roomImages ?? {}).map(
       (imgs) => imgs.length,
     );
+    // TEMP (room/facility round, 2026-08-05): the existing stash records only
+    // TOP-LEVEL keys, so it proves `rooms`, `interestPoints` and `terminals`
+    // ARRIVE but says nothing about what is inside them. Designing a room-detail
+    // section on that would be assuming the shape — the mistake that produced
+    // the fields=all prediction. One live open answers it. REMOVE once the
+    // shapes are recorded in the handoff.
+    const shapeOf = (v: unknown): unknown =>
+      v && typeof v === "object" && !Array.isArray(v)
+        ? Object.keys(v as Record<string, unknown>)
+        : Array.isArray(v)
+          ? { arrayLength: v.length, firstItemKeys: shapeOf(v[0]) }
+          : typeof v;
+    const rooms = raw.rooms;
+    const firstRoom = Array.isArray(rooms) ? (rooms[0] as Record<string, unknown>) : null;
+
     await logDiag("content_api_fields", {
       hotelCode,
       fields: Object.keys(raw),
@@ -441,6 +456,28 @@ async function fetchHotelbedsContentLive(
         : null,
       roomsWithImages: roomImageCounts.length,
       maxImagesPerRoom: roomImageCounts.length ? Math.max(...roomImageCounts) : 0,
+      // ── the three unparsed fields, one level deep ──
+      roomsShape: shapeOf(rooms),
+      // A whole room object verbatim: the only way to see whether capacity,
+      // characteristics and roomFacilities are actually populated or just
+      // declared. Capped — some hotels carry many rooms.
+      firstRoomSample: firstRoom ? JSON.stringify(firstRoom).slice(0, 900) : null,
+      // Distances arrive here. If the unit or format is not what the display
+      // expects, that must surface as a FINDING rather than be printed raw.
+      interestPointsShape: shapeOf(raw.interestPoints),
+      interestPointSample: Array.isArray(raw.interestPoints)
+        ? JSON.stringify(raw.interestPoints.slice(0, 2)).slice(0, 400)
+        : null,
+      terminalsShape: shapeOf(raw.terminals),
+      terminalSample: Array.isArray(raw.terminals)
+        ? JSON.stringify(raw.terminals.slice(0, 2)).slice(0, 300)
+        : null,
+      // How much of the facilities list we are currently discarding.
+      facilitiesTotal: Array.isArray(raw.facilities) ? raw.facilities.length : 0,
+      facilitiesKept: content.amenities.length,
+      facilitySample: Array.isArray(raw.facilities)
+        ? JSON.stringify(raw.facilities.slice(0, 3)).slice(0, 300)
+        : null,
     });
     await cachePutContent("hotelbeds", hotelCode, content);
     return content;
