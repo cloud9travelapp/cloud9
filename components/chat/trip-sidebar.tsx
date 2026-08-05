@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { signOut } from "next-auth/react";
 import { CloudMarkClassic } from "@/components/brand/cloud-marks";
 import {
   groupFavorites,
@@ -132,6 +133,58 @@ export default function TripSidebar({
     busy: boolean;
   } | null>(null);
 
+  // Account deletion is IMMEDIATE and total — no grace period (Max, 2026-08-04).
+  // The dialog therefore has to carry the whole weight: real counts, an explicit
+  // statement that signing in again yields a brand-new empty account, and an
+  // email-typed gate that cannot be clicked through by muscle memory.
+  const [accountDelete, setAccountDelete] = useState<{
+    counts: {
+      email: string | null;
+      trips: number;
+      messages: number;
+      favorites: number;
+      timelineItems: number;
+    } | null;
+    typed: string;
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
+
+  async function openAccountDelete() {
+    setAccountDelete({ counts: null, typed: "", busy: false, error: null });
+    try {
+      const res = await fetch("/api/account");
+      if (!res.ok) return; // the dialog still works, just without counts
+      const counts = (await res.json()) as {
+        email: string | null;
+        trips: number;
+        messages: number;
+        favorites: number;
+        timelineItems: number;
+      };
+      setAccountDelete((d) => (d ? { ...d, counts } : d));
+    } catch {
+      /* counts are an enhancement; never block the dialog on them */
+    }
+  }
+
+  async function confirmAccountDelete() {
+    if (!accountDelete) return;
+    setAccountDelete({ ...accountDelete, busy: true, error: null });
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Sign out AFTER the row is gone: the cookie is the only thing still
+      // pointing at an account that no longer exists.
+      await signOut({ callbackUrl: "/" });
+    } catch (err) {
+      console.error("Account delete failed:", err);
+      setAccountDelete((d) =>
+        d ? { ...d, busy: false, error: "המחיקה נכשלה. אפשר לנסות שוב." } : d,
+      );
+    }
+  }
+
   async function openDeleteConfirm(trip: Trip) {
     setDeleting({ trip, counts: null, busy: false });
     try {
@@ -184,8 +237,99 @@ export default function TripSidebar({
     router.refresh();
   }
 
+  const expectedEmail = accountDelete?.counts?.email ?? null;
+  const emailMatches =
+    !!expectedEmail &&
+    accountDelete?.typed.trim().toLowerCase() === expectedEmail.toLowerCase();
+
   return (
     <>
+      {accountDelete ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-6"
+          style={{
+            background:
+              "color-mix(in srgb, var(--c-bg-1) 60%, rgba(2,8,23,0.35))",
+          }}
+          onClick={() => !accountDelete.busy && setAccountDelete(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-panel border border-c-border bg-c-surface p-5 shadow-float"
+          >
+            <h2 className="font-display text-lg font-bold text-c-ink">
+              למחוק את החשבון?
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-c-muted">
+              {accountDelete.counts
+                ? `יימחקו ${accountDelete.counts.trips} טיולים, ${accountDelete.counts.messages} הודעות, ${accountDelete.counts.favorites} מועדפים ו-${accountDelete.counts.timelineItems} פריטים במסע.`
+                : "יימחקו כל הטיולים, ההודעות, המועדפים והפריטים במסע."}
+            </p>
+            {/* Immediate and total: no grace period, so say so. Nobody should
+                expect their trips back after signing in again. */}
+            <p className="mt-2 text-sm leading-relaxed text-c-muted">
+              המחיקה מיידית ואי אפשר לשחזר. כניסה מחדש עם אותו חשבון Google תיצור
+              חשבון חדש וריק.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-c-muted opacity-80">
+              עותקים עשויים להישמר בגיבויים לזמן קצר לאחר המחיקה.
+            </p>
+            {expectedEmail ? (
+              <label className="mt-4 block">
+                <span className="text-xs text-c-muted">
+                  לאישור, הקלידו את כתובת המייל שלכם:
+                </span>
+                <span
+                  dir="ltr"
+                  className="mt-1 block truncate text-xs font-semibold text-c-ink [unicode-bidi:plaintext]"
+                >
+                  {expectedEmail}
+                </span>
+                <input
+                  type="email"
+                  dir="ltr"
+                  autoComplete="off"
+                  data-testid="delete-account-email"
+                  value={accountDelete.typed}
+                  disabled={accountDelete.busy}
+                  onChange={(e) =>
+                    setAccountDelete((d) =>
+                      d ? { ...d, typed: e.target.value } : d,
+                    )
+                  }
+                  className="mt-1.5 w-full rounded-inset border border-c-border bg-c-bg-1 px-3 py-2 text-sm text-c-ink outline-none focus:border-c-accent"
+                />
+              </label>
+            ) : null}
+            {accountDelete.error ? (
+              <p className="mt-3 text-sm text-c-accent">{accountDelete.error}</p>
+            ) : null}
+            <div className="mt-5 flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="delete-account-confirm"
+                disabled={accountDelete.busy || !emailMatches}
+                onClick={() => void confirmAccountDelete()}
+                className="rounded-full bg-c-accent px-5 py-2.5 text-sm font-semibold text-c-on-accent transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {accountDelete.busy ? "מוחק…" : "מחיקת החשבון"}
+              </button>
+              <button
+                type="button"
+                disabled={accountDelete.busy}
+                onClick={() => setAccountDelete(null)}
+                className="px-3 py-2.5 text-sm text-c-muted transition-opacity hover:opacity-70"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {deleting ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-6"
@@ -485,6 +629,18 @@ export default function TripSidebar({
           </span>
           Cloud9
         </Link>
+        {/* Account deletion. py-2 (not a bare text link) keeps this above the
+            standing 24px minimum tap target — a text-sized row is ~18px, which
+            is a miss on a thumb, and this is the most destructive control in
+            the app. Height comes from padding so it stays visually quiet. */}
+        <button
+          type="button"
+          data-testid="delete-account-trigger"
+          onClick={() => void openAccountDelete()}
+          className="mt-1 flex w-full items-center rounded-lg px-2 py-2 text-right text-xs text-c-muted transition-colors hover:text-c-accent"
+        >
+          מחיקת החשבון
+        </button>
       </div>
     </aside>
     </>

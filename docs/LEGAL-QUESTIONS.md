@@ -119,6 +119,59 @@ delete from public.hotel_reviews where user_id = '<user-uuid>';
 > potentially longer in manual dumps. Is that acceptable, and does it need
 > describing in the policy?
 
+### 3a. Self-serve deletion, as built (2026-08-04)
+
+Deletion is now available in the app. **It is IMMEDIATE and total — there is no
+grace period.** Pressing it erases the account and everything cascading from it
+at once. The confirmation dialog states the real counts being destroyed, requires
+the user to type their own email address, and says explicitly that signing in
+again with the same Google account creates a brand-new empty account.
+
+**ASSUMPTION / founder's decision.** A soft-delete with a declared cooling-off
+window is a recognised pattern (Facebook holds 30 days, extended from 14;
+Microsoft holds 30 then deletes irreversibly). It is legitimate *provided* the
+window is declared and genuinely ends in deletion. We chose immediate deletion
+instead because it is simple to explain and to build, and trip planning is not an
+account where losing years of content is traumatic.
+
+> **QUESTION 15.** Is immediate deletion with no grace period acceptable, or is a
+> declared cooling-off window advisable for consumer-protection reasons — i.e. to
+> protect users from their own mistaken click?
+
+> **QUESTION 16.** When a deleted user signs in again with the same Google
+> account, they get a genuinely fresh, empty account and nothing is restored or
+> re-linked. Please confirm that is the correct behaviour and that no prior data
+> should be reassociated.
+
+> **QUESTION 17 — flagged as FUTURE, not current.** If we ever ban an account for
+> fraud, that user could delete and immediately re-register. Preventing it would
+> mean retaining an identifier for someone who asked to be erased, which is in
+> tension with the erasure right, though there is a legitimate-interest argument
+> for fraud prevention. **This is not relevant today** — there is no payment, no
+> money at stake, and no ban mechanism. It becomes relevant the moment bookings
+> and payments exist. What is the acceptable shape of such a list if we need one?
+
+### 3b. A defect that made deletion accidentally reversible — closed 2026-08-04
+
+Recorded because it bears on what we can truthfully claim in the privacy policy.
+
+Before this date, `/api/chat` **upserted** the user row on every request. Sessions
+are stateless JWTs with roughly a 30-day life and no revocation. So a user whose
+account had been deleted, but whose browser still held a valid token, would
+**recreate their own account record** with their next message. The underlying
+data — trips, messages, favourites, timeline — was genuinely gone and did not
+return; what came back was the identity row itself.
+
+This was not a soft-delete decision. It was accidental: no declared grace period,
+no policy, no retention rationale. It was closed on 2026-08-04 by changing that
+path to a read-only lookup, so the sign-in callback is now the only place a user
+record is ever created, and a valid token with no record receives a 401 and is
+signed out.
+
+> **QUESTION 18.** Given the above, is there anything we must disclose about the
+> period during which this defect existed? No user has requested deletion to
+> date, so to our knowledge it was never triggered in practice.
+
 ---
 
 ## 4. Third parties and international transfers
@@ -207,8 +260,8 @@ Drafted by a non-lawyer as a starting point — please rewrite as needed.
 
 ## Open items on our side (not questions for counsel)
 
-- [ ] **Self-serve account deletion** — pre-launch, not a nice-to-have. Tracked
-      in `CLAUDE.md` TODOs.
+- [x] **Self-serve account deletion** — BUILT 2026-08-04, immediate and total
+      (see 3a). The upsert defect that made it reversible is closed (see 3b).
 - [ ] Resolve the `hotel_reviews` foreign key once Q7 is answered.
 - [ ] Enable `pg_cron` and schedule the 12-month purge (SQL in `0014`).
 - [ ] Publish a privacy policy before soft launch.

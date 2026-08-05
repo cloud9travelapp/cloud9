@@ -755,20 +755,35 @@ export async function POST(request: Request) {
     );
   }
 
-  // Ensure a user row exists and grab id + current preferences in one call.
+  // READ, never upsert. This used to be an upsert "to ensure a user row exists",
+  // which quietly made account deletion REVERSIBLE: sessions are stateless JWTs
+  // with a ~30-day life and no revocation, so a deleted user whose browser still
+  // held a token would recreate their own users row with the next message. The
+  // data stayed gone, but the identity they asked us to erase came back by
+  // accident — the version of soft deletion that cannot be explained to a
+  // regulator, because it was never declared or decided.
+  //
+  // The signIn callback (auth.ts) is now the ONLY place a user row is created.
+  // A valid token with no row means the account is gone: 401, and the client
+  // signs out. Worth doing on its own merits — a chat endpoint that silently
+  // creates identities is surprising.
   const { data: user, error: userError } = await admin
     .from("users")
-    .upsert(
-      {
-        google_id: session.user.googleId,
-        email: session.user.email,
-        name: session.user.name,
-        image: session.user.image,
-      },
-      { onConflict: "google_id" },
-    )
     .select("id, name, preferences")
-    .single();
+    .eq("google_id", session.user.googleId)
+    .maybeSingle();
+
+  if (!userError && !user) {
+    await logDiag("chat_request_error", {
+      stage: "user_deleted",
+      status: 401,
+      message: "valid session, no user row — account deleted",
+    });
+    return Response.json(
+      { error: "Account no longer exists", signOut: true },
+      { status: 401 },
+    );
+  }
 
   if (userError || !user) {
     console.error("Failed to load user:", userError?.message);
