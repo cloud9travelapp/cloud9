@@ -940,10 +940,17 @@ export async function POST(request: Request) {
   let heartedLine = "";
   let heartedAttractionsLine = "";
   if (rawTripId) {
-    const [tripRes, historyRes, prefsRes, heartsRes, attractionHeartsRes] = await Promise.all([
+    // EVERY query here is scoped by user_id, not just the ownership select.
+    // They used to be scoped by trip_id alone, which was safe only because the
+    // 404 below fired before the results were used — defence that depends on
+    // statement order, one moved line away from being a real leak. A foreign
+    // trip id must not load another user's rows even into server memory.
+    // `preferences` is folded into the ownership select rather than fetched by
+    // a second, unscoped query on the same table.
+    const [tripRes, historyRes, heartsRes, attractionHeartsRes] = await Promise.all([
       admin
         .from("trips")
-        .select("id, name")
+        .select("id, name, preferences")
         .eq("id", rawTripId)
         .eq("user_id", user.id)
         .single(),
@@ -951,16 +958,16 @@ export async function POST(request: Request) {
         .from("chat_messages")
         .select("role, content, created_at")
         .eq("trip_id", rawTripId)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(40),
-      // Best-effort: errors (e.g. column not migrated yet) yield [].
-      admin.from("trips").select("preferences").eq("id", rawTripId).single(),
       // Hearted hotels — compact taste summary for the dynamic tail.
       // Best-effort: table not migrated → no line.
       admin
         .from("trip_favorites")
         .select("item")
         .eq("trip_id", rawTripId)
+        .eq("user_id", user.id)
         .eq("item_type", "stay")
         .order("created_at", { ascending: false })
         .limit(12),
@@ -970,6 +977,7 @@ export async function POST(request: Request) {
         .from("trip_favorites")
         .select("item")
         .eq("trip_id", rawTripId)
+        .eq("user_id", user.id)
         .eq("item_type", "attraction")
         .order("created_at", { ascending: false })
         .limit(12),
@@ -982,10 +990,10 @@ export async function POST(request: Request) {
       });
       return Response.json({ error: "Trip not found" }, { status: 404 });
     }
-    trip = tripRes.data;
+    trip = tripRes.data as { id: string; name: string };
     history = ((historyRes.data ?? []) as ChatRow[]).reverse();
-    const rawPrefs = (prefsRes.data as { preferences?: unknown } | null)
-      ?.preferences;
+    // Preferences now ride the ownership-scoped select above.
+    const rawPrefs = (tripRes.data as { preferences?: unknown }).preferences;
     tripPrefs = Array.isArray(rawPrefs)
       ? rawPrefs.filter((p): p is string => typeof p === "string")
       : [];
